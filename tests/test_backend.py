@@ -19,10 +19,20 @@ from winslim.studio import (
     service_changes,
     validate_extra,
     validate_inf_files,
+    describe_error,
 )
 
 
 class BackendTests(unittest.TestCase):
+    def test_missing_component_error_does_not_assume_json_import(self):
+        _, hint = describe_error(
+            BuildError(
+                "Componente non presente nel catalogo di questa edizione (packages): Package"
+            )
+        )
+        self.assertNotIn("JSON", hint)
+        self.assertIn("componente selezionato", hint)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

@@ -32,6 +32,11 @@ class SimulatedWindows(Builder):
         self.change_source = False
         self.capabilities = {"MathRecognizer~~~~0.0.2.0": "Installed"}
         self.capability_removals = []
+        self.packages = {}
+        self.features = {}
+        self.package_removals = []
+        self.capability_packages = {}
+        self.feature_packages = {}
 
     def ps(self, script, quiet=False):
         self.check_cancel()
@@ -76,12 +81,35 @@ class SimulatedWindows(Builder):
                 for name, state in self.capabilities.items()
                 for line in ["Capability Identity : " + name, "State : " + state]
             ]
+        if "/Get-Packages" in cmd:
+            return 0, [
+                line
+                for name, state in self.packages.items()
+                for line in ["Package Identity : " + name, "State : " + state]
+            ]
+        if "/Get-Features" in cmd:
+            return 0, [
+                line
+                for name, state in self.features.items()
+                for line in ["Feature Name : " + name, "State : " + state]
+            ]
+        if "/Disable-Feature" in cmd:
+            name = next(arg.split(":", 1)[1] for arg in cmd if arg.startswith("/FeatureName:"))
+            self.features[name] = "Disabled"
+            self.packages.pop(self.feature_packages.get(name), None)
         if "/Remove-Capability" in cmd:
             name = next(arg.split(":", 1)[1] for arg in cmd if arg.startswith("/CapabilityName:"))
             if name not in self.capabilities:
                 raise BuildError("Error: 87 A Windows capability name was not recognized.")
             self.capability_removals.append(name)
             self.capabilities[name] = "Not Present"
+            self.packages.pop(self.capability_packages.get(name), None)
+        if "/Remove-Package" in cmd:
+            name = next(arg.split(":", 1)[1] for arg in cmd if arg.startswith("/PackageName:"))
+            if name not in self.packages:
+                raise BuildError("Package already removed")
+            self.package_removals.append(name)
+            del self.packages[name]
         if "/Add-Driver" in cmd:
             self.driver_added[self.active_index] = True
         if "/Commit" in cmd:
@@ -224,3 +252,35 @@ class WorkflowTests(unittest.TestCase):
         self.builder.extra["capabilities"] = ["MathRecognizer~~~~0.0.1.0"]
         self.builder.build()
         self.assertEqual(self.builder.capability_removals, ["MathRecognizer~~~~0.0.2.0"])
+
+    def test_package_removed_by_standard_capability_is_not_removed_again(self):
+        package = "Microsoft-Windows-InternetExplorer-Optional-Package~31bf3856ad364e35~amd64~~11.0.26100.1742"
+        capability = "Browser.InternetExplorer~~~~0.0.11.0"
+        self.builder.c.update(indexes=[2], names=["Windows 11 Pro"], caps=["Internet Explorer"])
+        self.builder.capabilities[capability] = "Installed"
+        self.builder.packages[package] = "Installed"
+        self.builder.capability_packages[capability] = package
+        self.builder.extra["packages"] = [package]
+        self.builder.build()
+        self.assertEqual(self.builder.package_removals, [])
+        self.assertEqual(self.output.read_bytes(), b"rebuilt iso")
+        report = json.loads(Path(str(self.output) + ".report.json").read_text())
+        self.assertEqual(
+            report["editions"][0]["component_resolution"][0]["status"], "already_absent"
+        )
+
+    def test_package_removed_by_advanced_feature_is_not_removed_again(self):
+        package = "Feature-Package~token~amd64~~1.0.0.0"
+        self.builder.c.update(indexes=[2], names=["Windows 11 Pro"])
+        self.builder.features["FeatureA"] = "Enabled"
+        self.builder.packages[package] = "Installed"
+        self.builder.feature_packages["FeatureA"] = package
+        self.builder.extra.update(features=["FeatureA"], packages=[package])
+        self.builder.build()
+        self.assertEqual(self.builder.package_removals, [])
+        self.assertEqual(self.output.read_bytes(), b"rebuilt iso")
+        report = json.loads(Path(str(self.output) + ".report.json").read_text())
+        package_decision = next(
+            d for d in report["editions"][0]["component_resolution"] if d["area"] == "packages"
+        )
+        self.assertEqual(package_decision["status"], "already_absent")

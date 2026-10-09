@@ -1,3 +1,10 @@
+# 4.0.8 — pacchetti già rimossi da altri componenti
+
+- Confronto con l'inventario iniziale: un componente presente prima delle modifiche e poi assente viene registrato senza una seconda rimozione.
+- Pacchetti riletti prima di ciascuna rimozione, anche dopo feature e capabilities che possono eliminarli come dipendenza.
+- I nomi sconosciuti restano errori espliciti; il messaggio non presume più un'importazione JSON.
+- Cinque test aggiuntivi: 84 test totali, incluse rimozioni simulate del pacchetto Internet Explorer tramite capability e di pacchetti tramite feature.
+
 # 4.0.7 — riutilizzo catalogo e gruppi di stato in cima
 
 - Catalogo salvato su disco e riutilizzato anche dopo la chiusura del programma, per la stessa identità e metadati ISO ed edizione.

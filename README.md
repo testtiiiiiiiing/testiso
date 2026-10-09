@@ -81,7 +81,10 @@ l’ottimizzazione Windows; il tempo totale della prima lettura dipende da DISM.
 Le modifiche vengono applicate durante la creazione. Le tre liste testuali
 separate sono state eliminate; i JSON precedenti restano compatibili e le
 richieste non ancora riscontrate appaiono nel catalogo come “Da verificare”.
-I nomi dei componenti importati vengono verificati per ogni edizione. I nomi
+I nomi dei componenti selezionati vengono verificati per ogni edizione.
+Un pacchetto presente inizialmente e già eliminato da una rimozione di feature
+o capabilities viene registrato come già assente, senza una seconda rimozione.
+L’inventario viene aggiornato prima di rimuovere ciascun pacchetto. I nomi
 abbreviati o con una vecchia versione vengono risolti solo quando il catalogo
 fornisce una corrispondenza univoca, mantenendo la lingua. I nomi sconosciuti o
 ambigui richiedono una nuova selezione dal catalogo; i componenti standard non
@@ -102,7 +105,7 @@ senza bloccare la creazione della ISO.
 
 ## Test eseguiti e limiti
 
-Sono passati **79 test** con Python 3.12 e 3.13 su Linux, con display virtuale
+Sono passati **84 test** con Python 3.12 e 3.13 su Linux, con display virtuale
 reale per Tk. Coprono le otto pagine, importazione, profili, annullamento,
 protezione dei percorsi, registro, XML, output atomico, hash, dipendenze dei
 driver e un flusso completo multi-edizione con risposte Windows simulate.

@@ -95,6 +95,32 @@ class ComponentResolutionTests(unittest.TestCase):
         )
         self.assertEqual(names["capabilities"], ["MathRecognizer~~~~0.0.1.0"])
 
+    def test_package_present_before_edits_but_now_missing_is_already_absent(self):
+        names, decisions = resolve_components(
+            {"packages": ["Browser-Package~token~amd64~~1.0.0.0"]},
+            {"packages": []},
+            lambda line: None,
+            previous_inventory={
+                "packages": [
+                    "Package Identity : Browser-Package~token~amd64~~1.0.0.0",
+                    "State : Installed",
+                ]
+            },
+        )
+        self.assertEqual(names["packages"], [])
+        self.assertEqual(decisions[0]["status"], "already_absent")
+
+    def test_unknown_package_is_rejected_even_with_previous_inventory(self):
+        with self.assertRaisesRegex(BuildError, "Unknown-Package"):
+            resolve_components(
+                {"packages": ["Unknown-Package"]},
+                {"packages": []},
+                lambda line: None,
+                previous_inventory={
+                    "packages": ["Package Identity : Known-Package", "State : Installed"]
+                },
+            )
+
 
 class SafetyTests(unittest.TestCase):
     def setUp(self):

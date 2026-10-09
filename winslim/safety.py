@@ -89,12 +89,13 @@ def component_records(lines, field):
     return records
 
 
-def resolve_components(extra, inventory, log, optional_capabilities=()):
+def resolve_components(extra, inventory, log, optional_capabilities=(), previous_inventory=None):
     """Resolve names against this edition; never pass arbitrary names to DISM."""
     resolved = {field: [] for field in ("features", "capabilities", "packages")}
     decisions = []
     for field in resolved:
         available = component_records(inventory.get(field, []), field)
+        previous = component_records((previous_inventory or {}).get(field, []), field)
         for requested in extra.get(field, []):
             candidates = [n for n in available if n.casefold() == requested.casefold()]
             if field == "capabilities" and not candidates:
@@ -115,6 +116,23 @@ def resolve_components(extra, inventory, log, optional_capabilities=()):
                     + ", ".join(candidates)
                 )
             if not candidates:
+                known = next(
+                    (name for name in previous if name.casefold() == requested.casefold()), None
+                )
+                if known is not None:
+                    log(
+                        "Componente presente prima delle modifiche e ora già assente, nessuna seconda rimozione: "
+                        + known
+                    )
+                    decisions.append(
+                        {
+                            "area": field,
+                            "requested": requested,
+                            "resolved": known,
+                            "status": "already_absent",
+                        }
+                    )
+                    continue
                 base = requested.split("~", 1)[0].casefold()
                 if field == "capabilities" and base in {
                     n.casefold() for n in optional_capabilities

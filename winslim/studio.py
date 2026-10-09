@@ -45,7 +45,7 @@ from .safety import (
 )
 from .catalog import CatalogCache, scan_identity
 
-VERSION = "WinSlim Studio 4.0.7"
+VERSION = "WinSlim Studio 4.0.8"
 PENDING = {}
 PROTECTED = {
     "RpcSs",
@@ -526,7 +526,9 @@ def extended_dismount(self, path, save=True):
                 _, current[field] = self.run(
                     ["dism.exe", "/English", "/Image:" + path, option], quiet=True
                 )
-        components, decisions = resolve_components(e, current, self.log, [p for _, p, _ in CAPS])
+        components, decisions = resolve_components(
+            e, current, self.log, [p for _, p, _ in CAPS], previous_inventory=self.plus_before
+        )
         for name in components["features"]:
             self.run(
                 [
@@ -552,7 +554,27 @@ def extended_dismount(self, path, save=True):
                 ],
                 ok=(0, 3010),
             )
-        for name in components["packages"]:
+        # Feature/capability removal can also remove their backing packages.
+        # Query again immediately before package removals and after each one.
+        for requested in e.get("packages", []):
+            _, package_lines = self.run(
+                ["dism.exe", "/English", "/Image:" + path, "/Get-Packages"], quiet=True
+            )
+            previous_packages = self.plus_before.get("packages", []) + current.get("packages", [])
+            packages, package_decisions = resolve_components(
+                {"packages": [requested]},
+                {"packages": package_lines},
+                self.log,
+                previous_inventory={"packages": previous_packages},
+            )
+            decisions = [
+                d
+                for d in decisions
+                if not (d["area"] == "packages" and d["requested"] == requested)
+            ] + package_decisions
+            if not packages["packages"]:
+                continue
+            name = packages["packages"][0]
             self.run(
                 [
                     "dism.exe",
@@ -796,7 +818,7 @@ def remove_caps_fixed(self):
 
 
 """WinSlim Studio: desktop interface and observable, cancellable workflows."""
-VERSION = "WinSlim Studio 4.0.7"
+VERSION = "WinSlim Studio 4.0.8"
 UI_FONT = "Segoe UI" if IS_WIN else "Helvetica"
 MONO_FONT = "Consolas" if IS_WIN else "Courier"
 SCRIPT_FONT = "Segoe Script" if IS_WIN else "URW Chancery L"
@@ -1218,7 +1240,7 @@ def describe_error(err):
     if "componente non presente nel catalogo" in low or "nome componente ambiguo" in low:
         return (
             "Selezione componenti da aggiornare",
-            "Il JSON contiene un nome non valido per questa edizione. Riscansiona la ISO e sostituisci la voce indicata usando il nome completo del catalogo.",
+            "Il componente selezionato non è stato trovato nel catalogo attuale di questa edizione. Il log indica il nome preciso; verifica l’edizione selezionata e aggiorna il catalogo con Riscansiona.",
         )
     if "windows capability name was not recognized" in low:
         return (
