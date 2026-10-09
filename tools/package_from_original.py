@@ -144,7 +144,7 @@ def build(original, output):
     read_archive(rebuilt)  # Validate every compressed entry and archive boundary.
     output.write_bytes(rebuilt)
     manifest = {
-        "version": "4.0.5",
+        "version": "4.0.6",
         "original_sha256": hashlib.sha256(uploaded).hexdigest(),
         "output_sha256": hashlib.sha256(rebuilt).hexdigest(),
         "runtime_origin": "Windows Python/Tcl runtime and bootloader from the user-uploaded EXE",

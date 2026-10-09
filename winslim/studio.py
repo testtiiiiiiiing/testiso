@@ -44,7 +44,7 @@ from .safety import (
     resolve_components,
 )
 
-VERSION = "WinSlim Studio 4.0.5"
+VERSION = "WinSlim Studio 4.0.6"
 PENDING = {}
 PROTECTED = {
     "RpcSs",
@@ -651,13 +651,44 @@ class ProjectActions(_BaseApp):
         for x in self.plus_lists[key]:
             lb.insert("end", x if isinstance(x, str) else x["path"] + "  " + json.dumps(x["args"]))
 
-    def add_components(self):
-        for item in self.scan_tree.selection():
-            kind, name, _ = self.scan_tree.item(item, "values")
-            if kind in self.plus_text:
-                t = self.plus_text[kind]
-                if name not in lines(t.get("1.0", "end")):
-                    t.insert("end", name + "\n")
+    def component_requested(self, kind, name):
+        if name in self.component_choices[kind]:
+            return True
+        return kind == "capabilities" and any(
+            name.split("~", 1)[0].casefold() == prefix.casefold() and self.cap_vars[label].get()
+            for label, prefix, _ in CAPS
+        )
+
+    def set_component_choice(self, remove=True):
+        selected = [self.scan_tree.item(item, "values")[:2] for item in self.scan_tree.selection()]
+        if not selected:
+            self.status_var.set("Seleziona uno o più componenti nel catalogo")
+            return
+        changes = [
+            (kind, name)
+            for kind, name in selected
+            if kind in self.component_choices and self.component_requested(kind, name) != remove
+        ]
+        if not changes:
+            return
+        self.checkpoint()
+        for kind, name in changes:
+            if remove:
+                self.component_choices[kind].append(name)
+            else:
+                if name in self.component_choices[kind]:
+                    self.component_choices[kind].remove(name)
+                if kind == "capabilities":
+                    for label, prefix, _ in CAPS:
+                        if name.split("~", 1)[0].casefold() == prefix.casefold():
+                            self.cap_vars[label].set(False)
+        self.filter_components()
+        self.refresh_summary()
+        self.status_var.set("Scelte aggiornate nel catalogo")
+
+    def component_shortcut(self, remove):
+        self.action(lambda: self.set_component_choice(remove))
+        return "break"
 
     def extra_config(self):
         services = {
@@ -675,8 +706,7 @@ class ProjectActions(_BaseApp):
             power=self.v_power.get().strip(),
             drivers_boot=self.v_bootdrivers.get(),
             **{
-                k: lines(self.plus_text[k].get("1.0", "end"))
-                for k in ("features", "capabilities", "packages")
+                k: list(self.component_choices[k]) for k in ("features", "capabilities", "packages")
             },
         )
 
@@ -765,7 +795,7 @@ def remove_caps_fixed(self):
 
 
 """WinSlim Studio: desktop interface and observable, cancellable workflows."""
-VERSION = "WinSlim Studio 4.0.5"
+VERSION = "WinSlim Studio 4.0.6"
 UI_FONT = "Segoe UI" if IS_WIN else "Helvetica"
 MONO_FONT = "Consolas" if IS_WIN else "Courier"
 SCRIPT_FONT = "Segoe Script" if IS_WIN else "URW Chancery L"
@@ -1676,6 +1706,7 @@ class App(ProjectActions):
         self.theme()
         self.plus_lists = {"drivers": [], "updates": [], "software": []}
         self.plus_text = {}
+        self.component_choices = {k: [] for k in ("features", "capabilities", "packages")}
         self.plus_busy = False
         self.service_vars = {n: tk.StringVar(value="Invariato") for n, _ in SERVICE_LIST}
         self.ui_vars = {k: tk.BooleanVar(value=False) for k in UI_RULES}
@@ -1685,6 +1716,7 @@ class App(ProjectActions):
         self.search_apps = tk.StringVar()
         self.search_components = tk.StringVar()
         self.component_kind = tk.StringVar(value="Tutti")
+        self.component_state = tk.StringVar(value="Tutti gli stati")
         self.scan_state_var = tk.StringVar(value="Nessuna scansione eseguita")
         self.status_var = tk.StringVar(value="Pronto")
         self.phase_var = tk.StringVar(value="In attesa")
@@ -1947,9 +1979,18 @@ class App(ProjectActions):
             bar, "Scansiona componenti", lambda: self.action(self.scan_iso), True
         )
         self.scan_btn.pack(side="left")
-        self.button(bar, "Aggiungi selezionati", lambda: self.action(self.add_components)).pack(
-            side="left", padx=8
-        )
+        self.button(
+            bar, "Disattiva / rimuovi [D]", lambda: self.action(self.set_component_choice)
+        ).pack(side="left", padx=8)
+        self.button(
+            bar, "Annulla scelta [R]", lambda: self.action(lambda: self.set_component_choice(False))
+        ).pack(side="left")
+        self.label(
+            f,
+            "D: disabilita le feature e rimuove i relativi file; rimuove capabilities e pacchetti. R: annulla la scelta. Le modifiche si applicano durante la creazione della ISO.",
+            "Muted.TLabel",
+            wraplength=850,
+        ).pack(anchor="w", pady=(10, 0))
         self.scan_progress = ttk.Progressbar(f, mode="indeterminate")
         self.scan_progress.pack(fill="x", pady=(12, 6))
         self.label(f, "", "Muted.TLabel", textvariable=self.scan_state_var, wraplength=850).pack(
@@ -1972,22 +2013,32 @@ class App(ProjectActions):
         ).pack(side="left", padx=(8, 0))
         self.search_components.trace_add("write", lambda *a: self.filter_components())
         self.component_kind.trace_add("write", lambda *a: self.filter_components())
-        self.scan_tree = self.tree(
-            f, [("kind", "TIPO", 110), ("name", "NOME ESATTO", 540), ("state", "STATO", 150)], 9
+        self.component_state_box = ttk.Combobox(
+            filters,
+            textvariable=self.component_state,
+            values=["Tutti gli stati"],
+            state="readonly",
+            width=22,
         )
-        for key, title in [
-            ("features", "Feature: disabilita e rimuovi payload"),
-            ("capabilities", "Capabilities / Features on Demand"),
-            ("packages", "Pacchetti e lingue: rimozione avanzata"),
-        ]:
-            f = self.card(
-                parent,
-                title,
-                "Un nome esatto per riga. Le rimozioni incompatibili interrompono la creazione.",
-            )
-            t = self.text_box(f, 3)
-            t.pack(fill="x")
-            self.plus_text[key] = t
+        self.component_state_box.pack(side="left", padx=(8, 0))
+        self.component_state.trace_add("write", lambda *a: self.filter_components())
+        self.scan_tree = self.tree(
+            f,
+            [
+                ("kind", "TIPO", 100),
+                ("name", "NOME ESATTO", 390),
+                ("state", "STATO ISO", 160),
+                ("choice", "SCELTA", 165),
+            ],
+            12,
+        )
+        self.scan_tree.tag_configure("pending", foreground=COLORS["accent"])
+        for key in ("d", "D"):
+            self.scan_tree.bind("<KeyPress-" + key + ">", lambda e: self.component_shortcut(True))
+        for key in ("r", "R"):
+            self.scan_tree.bind("<KeyPress-" + key + ">", lambda e: self.component_shortcut(False))
+        for var in self.cap_vars.values():
+            var.trace_add("write", lambda *args: self.filter_components())
 
     def filter_apps(self):
         query = self.search_apps.get().lower()
@@ -2813,8 +2864,7 @@ class App(ProjectActions):
                         self.scan_records = data
                         self.filter_components()
                         self.scan_state_var.set(
-                            "%d componenti letti • puoi filtrare e aggiungere alle rimozioni"
-                            % len(data)
+                            "%d componenti letti • seleziona le righe e premi D o R" % len(data)
                         )
                     else:
                         self.scan_state_var.set(
@@ -2888,15 +2938,47 @@ class App(ProjectActions):
     def filter_components(self):
         if not hasattr(self, "scan_tree"):
             return
-        query = self.search_components.get().lower()
-        kind = self.component_kind.get()
+        selected = self.scan_tree.selection()
+        focus = self.scan_tree.focus()
+        top = self.scan_tree.yview()[0]
+        query = self.search_components.get().casefold()
+        kind_filter = self.component_kind.get()
+        rows = {(kind, name): state for kind, name, state in self.scan_records}
+        for kind, names in self.component_choices.items():
+            for name in names:
+                rows.setdefault((kind, name), "Da verificare")
+        self.component_state_box.configure(
+            values=["Tutti gli stati"] + sorted(set(rows.values()), key=str.casefold)
+        )
+        state_filter = self.component_state.get()
         for item in self.scan_tree.get_children():
             self.scan_tree.delete(item)
-        for row in self.scan_records:
-            if (kind == "Tutti" or row[0] == kind) and query in (" ".join(map(str, row))).lower():
-                self.scan_tree.insert("", "end", values=row)
+        for (kind, name), state in rows.items():
+            chosen = self.component_requested(kind, name)
+            choice = (
+                ("Da disattivare" if kind == "features" else "Da rimuovere")
+                if chosen
+                else "Mantieni"
+            )
+            values = (kind, name, state, choice)
+            if (
+                (kind_filter == "Tutti" or kind == kind_filter)
+                and (state_filter == "Tutti gli stati" or state == state_filter)
+                and query in " ".join(values).casefold()
+            ):
+                self.scan_tree.insert(
+                    "",
+                    "end",
+                    iid=kind + ":" + name,
+                    values=values,
+                    tags=("pending",) if chosen else (),
+                )
         if self.scan_tree.sort_column:
             self.sort_tree(self.scan_tree, self.scan_tree.sort_column, repeat=True)
+        self.scan_tree.selection_set([item for item in selected if self.scan_tree.exists(item)])
+        if self.scan_tree.exists(focus):
+            self.scan_tree.focus(focus)
+        self.scan_tree.yview_moveto(top)
 
     def scan_iso(self):
         if self.operation or self.loading_editions:

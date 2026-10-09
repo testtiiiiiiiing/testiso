@@ -180,6 +180,97 @@ class DesktopTests(unittest.TestCase):
         self.app.search_components.set("Recall")
         self.assertEqual(len(self.app.scan_tree.get_children()), 1)
         self.app.scan_tree.selection_set(self.app.scan_tree.get_children()[0])
-        self.app.add_components()
-        self.app.add_components()
-        self.assertEqual(self.app.plus_text["features"].get("1.0", "end").strip(), "Recall")
+        self.app.set_component_choice()
+        self.app.set_component_choice()
+        self.assertEqual(self.app.extra_config()["features"], ["Recall"])
+        item = self.app.scan_tree.get_children()[0]
+        self.assertEqual(self.app.scan_tree.set(item, "state"), "Enabled")
+        self.assertEqual(self.app.scan_tree.set(item, "choice"), "Da disattivare")
+        self.assertNotIn("features", self.app.plus_text)
+
+    def test_catalog_state_filter_supports_all_discovered_states(self):
+        self.app.scan_records = [
+            ("features", "FeatureOn", "Enabled"),
+            ("features", "FeatureOff", "Disabled"),
+            ("packages", "StagedPackage", "Staged"),
+            ("capabilities", "InstalledCapability", "Installed"),
+        ]
+        self.app.filter_components()
+        for state in ("Enabled", "Disabled", "Staged", "Installed"):
+            self.app.component_state.set(state)
+            children = self.app.scan_tree.get_children()
+            self.assertEqual(len(children), 1)
+            self.assertEqual(self.app.scan_tree.set(children[0], "state"), state)
+        self.app.component_state.set("Tutti gli stati")
+        self.assertEqual(len(self.app.scan_tree.get_children()), 4)
+
+    def test_catalog_d_and_r_keys_update_selected_rows_in_place(self):
+        self.app.navigate("apps")
+        self.app.update()
+        self.app.scan_records = [
+            ("features", "FeatureA", "Enabled"),
+            ("packages", "PackageB", "Staged"),
+        ]
+        self.app.filter_components()
+        items = self.app.scan_tree.get_children()
+        self.app.scan_tree.selection_set(items)
+        self.app.page_canvases["apps"].yview_moveto(1)
+        self.app.update()
+        self.app.scan_tree.focus_force()
+        self.app.update()
+        self.app.scan_tree.event_generate("<KeyPress-d>")
+        self.app.update()
+        self.assertEqual(self.app.scan_tree.selection(), items)
+        self.assertEqual(self.app.scan_tree.set(items[0], "choice"), "Da disattivare")
+        self.assertEqual(self.app.scan_tree.set(items[1], "choice"), "Da rimuovere")
+        self.assertEqual(self.app.collect_build()["extra"]["packages"], ["PackageB"])
+        self.app.scan_tree.event_generate("<KeyPress-r>")
+        self.app.update()
+        self.assertTrue(all(self.app.scan_tree.set(item, "choice") == "Mantieni" for item in items))
+        self.assertEqual(self.app.collect_build()["extra"]["features"], [])
+        self.assertEqual(self.app.collect_build()["extra"]["packages"], [])
+
+    def test_imported_component_choices_remain_visible_and_can_be_cancelled(self):
+        cfg = self.app.config()
+        cfg["extra"]["features"] = ["OldFeature"]
+        cfg["extra"]["packages"] = ["OldPackage"]
+        check_config(cfg, self.app)
+        apply_config(self.app, cfg)
+        items = self.app.scan_tree.get_children()
+        self.assertEqual(len(items), 2)
+        self.assertTrue(
+            all(self.app.scan_tree.set(item, "state") == "Da verificare" for item in items)
+        )
+        self.assertEqual(self.app.config()["extra"]["features"], ["OldFeature"])
+        self.app.scan_tree.selection_set(items)
+        self.app.set_component_choice(False)
+        self.assertEqual(self.app.config()["extra"]["features"], [])
+        self.assertEqual(self.app.scan_tree.get_children(), ())
+
+    def test_catalog_choices_survive_filters_and_keep_state_sorting(self):
+        self.app.scan_records = [
+            ("features", "ZFeature", "Enabled"),
+            ("packages", "APackage", "Staged"),
+        ]
+        self.app.filter_components()
+        self.app.sort_tree(self.app.scan_tree, "state")
+        item = self.app.scan_tree.get_children()[0]
+        self.app.scan_tree.selection_set(item)
+        self.app.set_component_choice()
+        self.app.component_kind.set("packages")
+        self.app.component_kind.set("Tutti")
+        self.assertEqual(self.app.extra_config()["features"], ["ZFeature"])
+        self.assertEqual(self.app.scan_tree.set(item, "choice"), "Da disattivare")
+        self.assertEqual(self.app.scan_tree.get_children()[0], item)
+        self.assertFalse(self.app.scan_tree.sort_descending)
+
+    def test_catalog_reflects_standard_capability_choices_and_can_cancel_them(self):
+        self.app.scan_records = [("capabilities", "MathRecognizer~~~~0.0.1.0", "Installed")]
+        self.app.filter_components()
+        item = self.app.scan_tree.get_children()[0]
+        self.app.cap_vars["Math Recognizer"].set(True)
+        self.assertEqual(self.app.scan_tree.set(item, "choice"), "Da rimuovere")
+        self.app.scan_tree.selection_set(item)
+        self.app.set_component_choice(False)
+        self.assertFalse(self.app.cap_vars["Math Recognizer"].get())
+        self.assertEqual(self.app.scan_tree.set(item, "choice"), "Mantieni")

@@ -68,6 +68,14 @@ senza esportare l'edizione. Per `install.esd` converte soltanto l'edizione
 selezionata in una WIM temporanea. Il catalogo viene riutilizzato nella stessa
 sessione se ISO ed edizione non cambiano; lo stato distingue feature,
 capabilities e pacchetti durante la lettura.
+Nel catalogo puoi filtrare per nome, tipo e ogni stato presente (Enabled,
+Disabled, Staged ecc.). Seleziona una o più righe e premi **D** per richiedere
+la disattivazione delle feature con rimozione dei file o la rimozione di
+capabilities/pacchetti; **R** annulla la richiesta. La colonna **Scelta** cambia
+subito nella stessa tabella, mentre **Stato ISO** conserva lo stato rilevato.
+Le modifiche vengono applicate durante la creazione. Le tre liste testuali
+separate sono state eliminate; i JSON precedenti restano compatibili e le
+richieste non ancora riscontrate appaiono nel catalogo come “Da verificare”.
 I nomi dei componenti importati vengono verificati per ogni edizione. I nomi
 abbreviati o con una vecchia versione vengono risolti solo quando il catalogo
 fornisce una corrispondenza univoca, mantenendo la lingua. I nomi sconosciuti o
@@ -89,7 +97,7 @@ senza bloccare la creazione della ISO.
 
 ## Test eseguiti e limiti
 
-Sono passati **68 test** con Python 3.12 e 3.13 su Linux, con display virtuale
+Sono passati **73 test** con Python 3.12 e 3.13 su Linux, con display virtuale
 reale per Tk. Coprono le otto pagine, importazione, profili, annullamento,
 protezione dei percorsi, registro, XML, output atomico, hash, dipendenze dei
 driver e un flusso completo multi-edizione con risposte Windows simulate.

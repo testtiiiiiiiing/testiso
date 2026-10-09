@@ -1,3 +1,13 @@
+# 4.0.6 — scelte direttamente nel catalogo componenti
+
+- Eliminati i tre elenchi testuali sotto il catalogo: le scelte appaiono sulla riga selezionata.
+- Tasti D per disattivare/rimuovere e R per annullare la scelta, con selezione multipla e pulsanti equivalenti.
+- Filtro per tutti gli stati rilevati, inclusi Enabled, Disabled e Staged; stato ISO e scelta pianificata distinti.
+- Conservati selezione, ordinamento e scorrimento durante le modifiche.
+- JSON precedenti compatibili: richieste non ancora scansionate visibili come «Da verificare».
+- Catalogo sincronizzato anche con le rimozioni dei componenti standard.
+- Cinque test GUI aggiuntivi: 73 test totali.
+
 # 4.0.5 — pulizia finale e stato della creazione
 
 - La mancata pulizia dei temporanei dopo la creazione e verifica della ISO viene segnalata come avviso, con il percorso residuo e lo stato «ISO creata con avvisi».

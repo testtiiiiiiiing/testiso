@@ -372,7 +372,7 @@ def apply_config(app, cfg):
         if name not in app.service_vars:
             app.plus_text["services"].insert("end", name + "=" + inverse[mode] + "\n")
     for field in ("features", "capabilities", "packages"):
-        app.plus_text[field].insert("end", "\n".join(extra.get(field, [])))
+        app.component_choices[field] = list(dict.fromkeys(extra.get(field, [])))
     for name, var in app.ui_vars.items():
         var.set(extra.get("ui", {}).get(name, False))
     app.v_power.set(extra.get("power", ""))
@@ -380,5 +380,8 @@ def apply_config(app, cfg):
     app.last_editions_iso = ""
     app.editions_fingerprint = None
     app.scan_records = []
+    app.search_components.set("")
+    app.component_kind.set("Tutti")
+    app.component_state.set("Tutti gli stati")
     app.filter_components()
     app.refresh_summary()
