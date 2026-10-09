@@ -84,7 +84,14 @@ richieste non ancora riscontrate appaiono nel catalogo come “Da verificare”.
 I nomi dei componenti selezionati vengono verificati per ogni edizione.
 Un pacchetto presente inizialmente e già eliminato da una rimozione di feature
 o capabilities viene registrato come già assente, senza una seconda rimozione.
-L’inventario viene aggiornato prima di rimuovere ciascun pacchetto. I nomi
+L’inventario viene aggiornato prima di rimuovere ciascun pacchetto.
+Il log esportabile include i tempi di ogni passaggio della scansione e le
+ultime righe del log nativo DISM; una copia completa viene salvata nella
+cartella dei log dell’app, con il percorso indicato nel log operativo. Il passaggio 5 distingue smontaggio WIM,
+chiusura ISO e cancellazione dei temporanei; questa diagnostica non garantisce
+una riduzione della durata della prima scansione. Durante la creazione sono
+visibili anche il comando attivo e la sua durata, aggiornata mentre la
+percentuale rimane invariata. I nomi
 abbreviati o con una vecchia versione vengono risolti solo quando il catalogo
 fornisce una corrispondenza univoca, mantenendo la lingua. I nomi sconosciuti o
 ambigui richiedono una nuova selezione dal catalogo; i componenti standard non
@@ -105,7 +112,7 @@ senza bloccare la creazione della ISO.
 
 ## Test eseguiti e limiti
 
-Sono passati **84 test** con Python 3.12 e 3.13 su Linux, con display virtuale
+Sono passati **87 test** con Python 3.12 e 3.13 su Linux, con display virtuale
 reale per Tk. Coprono le otto pagine, importazione, profili, annullamento,
 protezione dei percorsi, registro, XML, output atomico, hash, dipendenze dei
 driver e un flusso completo multi-edizione con risposte Windows simulate.

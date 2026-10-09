@@ -63,6 +63,32 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(self.app.last_report, "result.iso.report.json")
         self.assertIsNone(self.app.operation)
 
+    def test_active_command_duration_updates_while_percentage_is_unchanged(self):
+        self.app.q.put(("command_started", ("Salvataggio immagine", 90)))
+        self.app.q.put(("unit_progress", 47))
+        with (
+            patch.object(self.app, "after"),
+            patch("winslim.studio.time.monotonic", return_value=100),
+        ):
+            self.app._pump()
+        self.assertEqual(self.app.command_var.get(), "Salvataggio immagine")
+        self.assertIn("47%", self.app.unit_var.get())
+        self.assertIn("00:10", self.app.unit_var.get())
+        with (
+            patch.object(self.app, "after"),
+            patch("winslim.studio.time.monotonic", return_value=160),
+        ):
+            self.app._pump()
+        self.assertIn("01:10", self.app.unit_var.get())
+        self.app.finish_operation()
+
+    def test_cleanup_after_interruption_is_displayed_before_final_error(self):
+        self.app.q.put(("cleanup_started", None))
+        with patch.object(self.app, "after"):
+            self.app._pump()
+        self.assertEqual(self.app.phase_var.get(), "Recupero dopo interruzione")
+        self.assertIn("scartando", self.app.note_var.get())
+
     def test_stock_defaults_make_no_removal_requests(self):
         cfg = self.app.collect_build()
         self.assertEqual(cfg["appx"], [])

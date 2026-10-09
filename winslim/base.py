@@ -1006,7 +1006,10 @@ try {
             for step, (name, fn) in enumerate(plan, 1):
                 self.log("=== [%d/%d] %s ===" % (step, len(plan), name))
                 fn()
-        except BaseException:
+        except BaseException as error:
+            self.log("Lavorazione interrotta: " + str(error))
+            if hasattr(self, "on_cleanup_started"):
+                self.on_cleanup_started()
             self.cleanup_on_error()
             raise
         if self.c.get("delete_work"):

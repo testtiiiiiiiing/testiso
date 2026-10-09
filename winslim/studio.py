@@ -45,7 +45,7 @@ from .safety import (
 )
 from .catalog import CatalogCache, scan_identity
 
-VERSION = "WinSlim Studio 4.0.8"
+VERSION = "WinSlim Studio 4.0.9"
 PENDING = {}
 PROTECTED = {
     "RpcSs",
@@ -818,7 +818,7 @@ def remove_caps_fixed(self):
 
 
 """WinSlim Studio: desktop interface and observable, cancellable workflows."""
-VERSION = "WinSlim Studio 4.0.8"
+VERSION = "WinSlim Studio 4.0.9"
 UI_FONT = "Segoe UI" if IS_WIN else "Helvetica"
 MONO_FONT = "Consolas" if IS_WIN else "Courier"
 SCRIPT_FONT = "Segoe Script" if IS_WIN else "URW Chancery L"
@@ -1052,6 +1052,30 @@ def cancelled(builder):
         raise BuildCancelled("Operazione annullata. Le immagini montate verranno scartate.")
 
 
+def command_label(cmd):
+    for option, label in [
+        ("/Remove-Package", "Rimozione pacchetto"),
+        ("/Remove-Capability", "Rimozione capability"),
+        ("/Disable-Feature", "Disattivazione feature"),
+        ("/Unmount-Image", "Salvataggio immagine" if "/Commit" in cmd else "Smontaggio immagine"),
+        ("/Mount-Image", "Montaggio immagine"),
+        ("/Get-Packages", "Lettura pacchetti"),
+        ("/Get-Capabilities", "Lettura capabilities"),
+        ("/Get-Features", "Lettura feature"),
+    ]:
+        if option in cmd:
+            target = next(
+                (
+                    a.split(":", 1)[1]
+                    for a in cmd
+                    if a.startswith(("/PackageName:", "/CapabilityName:", "/FeatureName:"))
+                ),
+                "",
+            )
+            return label + (": " + target if target else "")
+    return os.path.basename(cmd[0])
+
+
 def run_observable(self, cmd, ok=(0,), quiet=False):
     cancelled(self)
     cmd = list(cmd)
@@ -1064,6 +1088,10 @@ def run_observable(self, cmd, ok=(0,), quiet=False):
             cmd.append("/LogPath:" + self.dism_log)
         if IS_WIN:
             cmd = dism_command(cmd, self.dism)
+    started = time.monotonic()
+    self.log("Avvio comando: " + subprocess.list2cmdline(list(map(str, cmd))))
+    if hasattr(self, "on_command_started"):
+        self.on_command_started(command_label(cmd), started)
     p = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -1085,6 +1113,10 @@ def run_observable(self, cmd, ok=(0,), quiet=False):
             self.on_unit_progress(min(100, float(m.group(1))))
     p.stdout.close()
     rc = p.wait()
+    elapsed = time.monotonic() - started
+    self.log("Comando terminato • codice %s • %.1f secondi" % (rc, elapsed))
+    if hasattr(self, "on_command_finished"):
+        self.on_command_finished(elapsed)
     if ok is not None and rc not in ok:
         detail = "\n".join(output[-18:])
         if quiet and detail:
@@ -1294,6 +1326,8 @@ class App(ProjectActions):
         self.scan_records = []
         self.logs = []
         self.operation_started = None
+        self.command_started = None
+        self.command_percent = None
         self.current_page = "source"
         self.last_output = ""
         self.last_report = ""
@@ -1755,6 +1789,7 @@ class App(ProjectActions):
         self.timer_var = tk.StringVar(value="00:00")
         self.stage_var = tk.StringVar(value="0 fasi completate")
         self.unit_var = tk.StringVar(value="")
+        self.command_var = tk.StringVar(value="")
         self.note_var = tk.StringVar(value="La durata dipende da edizioni, componenti e disco.")
         self.feedback_var = tk.StringVar(value="")
         self.stats_var = tk.StringVar(value="Nessuna ISO selezionata")
@@ -2378,6 +2413,9 @@ class App(ProjectActions):
         self.prog.pack(fill="x", pady=(20, 10))
         self.label(f, "", "Muted.TLabel", textvariable=self.stage_var).pack(anchor="w")
         self.label(f, "", "Muted.TLabel", textvariable=self.unit_var).pack(anchor="w", pady=(4, 0))
+        self.label(f, "", "Muted.TLabel", textvariable=self.command_var, wraplength=820).pack(
+            anchor="w", pady=(4, 0)
+        )
         self.label(f, "", "Muted.TLabel", textvariable=self.note_var, wraplength=820).pack(
             anchor="w", pady=(10, 12)
         )
@@ -2754,6 +2792,11 @@ class App(ProjectActions):
         self.cancel_event = threading.Event()
         builder.cancel_event = self.cancel_event
         builder.on_unit_progress = lambda p: self.q.put(("unit_progress", p))
+        builder.on_command_started = lambda name, started: self.q.put(
+            ("command_started", (name, started))
+        )
+        builder.on_command_finished = lambda elapsed: self.q.put(("command_finished", elapsed))
+        builder.on_cleanup_started = lambda: self.q.put(("cleanup_started", None))
         self.operation_started = time.monotonic()
         self.done_phases = 0
         self.total_phases = 0
@@ -2803,6 +2846,9 @@ class App(ProjectActions):
         self.log("Richiesto annullamento al termine del comando attivo.")
 
     def finish_operation(self):
+        self.command_started = None
+        self.command_percent = None
+        self.command_var.set("")
         self.running = False
         self.plus_busy = False
         self.operation = None
@@ -2930,7 +2976,20 @@ class App(ProjectActions):
                     self.status_var.set("Scansione annullata")
                     self.finish_operation()
                 elif kind == "unit_progress":
+                    self.command_percent = val
                     self.unit_var.set("Comando attivo: %.0f%%" % val)
+                elif kind == "command_started":
+                    name, self.command_started = val
+                    self.command_percent = None
+                    self.command_var.set(name)
+                elif kind == "command_finished":
+                    self.command_started = None
+                    self.unit_var.set("Ultimo comando: %.1f secondi" % val)
+                elif kind == "cleanup_started":
+                    self.phase_var.set("Recupero dopo interruzione")
+                    self.note_var.set(
+                        "Lavorazione interrotta. Sto scartando le immagini montate; il motivo è nel log."
+                    )
                 elif kind == "studio_done":
                     self.finish_operation()
                     self.prog["value"] = 100
@@ -2974,6 +3033,14 @@ class App(ProjectActions):
                 self.append_log("Errore interfaccia: " + str(e))
             except Exception:
                 pass
+        if self.command_started is not None:
+            elapsed = max(0, int(time.monotonic() - self.command_started))
+            progress = (
+                "%.0f%% • " % self.command_percent if self.command_percent is not None else ""
+            )
+            self.unit_var.set(
+                "Comando attivo: " + progress + "durata %02d:%02d" % (elapsed // 60, elapsed % 60)
+            )
         if self.operation and self.operation_started:
             seconds = int(time.monotonic() - self.operation_started)
             self.timer_var.set("%02d:%02d" % (seconds // 60, seconds % 60))
@@ -3113,7 +3180,8 @@ class App(ProjectActions):
             out = os.path.join(temp, "inventory.json")
             cancel_file = os.path.join(temp, "cancel")
             os.makedirs(mnt)
-            script = scan_script(iso, idx, wim, mnt, out, cancel_file)
+            native_log = os.path.join(temp, "DISM.log")
+            script = scan_script(iso, idx, wim, mnt, out, cancel_file, native_log)
             script_path = os.path.join(temp, "scan.ps1")
             log_path = os.path.join(temp, "scan.log")
             try:
@@ -3148,16 +3216,58 @@ class App(ProjectActions):
 
                     threading.Thread(target=monitor, daemon=True).start()
                     output = []
+                    step_title = None
+                    step_started = time.monotonic()
                     for raw in p.stdout:
                         line = raw.rstrip()
                         output.append(line)
                         logfile.write(line + "\n")
                         if line.startswith("STUDIO:"):
-                            self.q.put(("scan_status", line[7:]))
+                            if step_title is not None:
+                                self.log(
+                                    "Durata scansione • %s: %.1f secondi"
+                                    % (step_title, time.monotonic() - step_started)
+                                )
+                            step_title = line[7:]
+                            step_started = time.monotonic()
+                            self.q.put(("scan_status", step_title))
                         elif line:
                             self.log("Scansione: " + line)
                     p.stdout.close()
                     rc = p.wait()
+                    if step_title is not None:
+                        self.log(
+                            "Durata scansione • %s: %.1f secondi"
+                            % (step_title, time.monotonic() - step_started)
+                        )
+                if os.path.isfile(native_log):
+                    try:
+                        if self.log_file:
+                            saved_native_log = (
+                                self.log_file + "." + os.path.basename(temp) + ".dism.log"
+                            )
+                            shutil.copy2(native_log, saved_native_log)
+                            self.log("Log DISM completo della scansione: " + saved_native_log)
+                    except OSError as error:
+                        self.log("Salvataggio log DISM completo non riuscito: " + str(error))
+                    try:
+                        with open(native_log, "rb") as stream:
+                            header = stream.read(2)
+                            stream.seek(0, os.SEEK_END)
+                            size = stream.tell()
+                            stream.seek(max(0, size - 128 * 1024))
+                            tail = stream.read()
+                        encoding = (
+                            "utf-16-le"
+                            if header == b"\xff\xfe"
+                            else "utf-16-be"
+                            if header == b"\xfe\xff"
+                            else "utf-8-sig"
+                        )
+                        for line in tail.decode(encoding, errors="replace").splitlines()[-100:]:
+                            self.log("DISM scansione: " + line)
+                    except OSError as error:
+                        self.log("Log DISM scansione non disponibile: " + str(error))
                 if rc and event.is_set() and os.path.isfile(out + ".cleaned"):
                     self.q.put(("scan_cancelled", None))
                     shutil.rmtree(temp, ignore_errors=True)
@@ -3176,8 +3286,16 @@ class App(ProjectActions):
                     self.log(
                         "Catalogo letto; cache su disco non disponibile, riutilizzo limitato alla sessione."
                     )
-                self.q.put(("scan_ready", (key, iso, rows)))
+                self.q.put(("scan_status", "5/5 • Eliminazione dei file temporanei"))
+                cleanup_started = time.monotonic()
                 shutil.rmtree(temp, ignore_errors=True)
+                self.log(
+                    "Durata scansione • Eliminazione file temporanei: %.1f secondi"
+                    % (time.monotonic() - cleanup_started)
+                )
+                if os.path.isdir(temp):
+                    self.log("Catalogo letto; alcuni file temporanei sono rimasti in " + temp)
+                self.q.put(("scan_ready", (key, iso, rows)))
             except Exception as e:
                 self.q.put(("scan_error", str(e) + "\nCartella temporanea: " + temp))
 
@@ -3351,12 +3469,16 @@ class App(ProjectActions):
         self.destroy()
 
 
-def scan_script(iso, idx, wim, mnt, out, cancel_file):
+def scan_script(iso, idx, wim, mnt, out, cancel_file, dism_log=None):
+    dism_log = dism_log or os.path.join(os.path.dirname(out), "scan-DISM.log")
     return (
         r"""$ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 [Console]::OutputEncoding=[Text.Encoding]::UTF8
 $disk=$null;$owned=$false;$mounted=$false
+$dismLog="""
+        + psq(dism_log)
+        + r"""
 function Check-Cancel { if(Test-Path """
         + psq(cancel_file)
         + r""") { throw 'Scansione annullata' } }
@@ -3380,7 +3502,7 @@ try {
         + r"""
  if($src.EndsWith('.esd',[StringComparison]::OrdinalIgnoreCase)) {
   Write-Output 'STUDIO:2/5 • Conversione ESD • può richiedere alcuni minuti'
-  Export-WindowsImage -SourceImagePath $src -SourceIndex $sourceIndex -DestinationImagePath """
+  Export-WindowsImage -LogPath $dismLog -SourceImagePath $src -SourceIndex $sourceIndex -DestinationImagePath """
         + psq(wim)
         + r""" -CompressionType Fast | Out-Null
   $image="""
@@ -3392,7 +3514,7 @@ try {
  }
  Check-Cancel
  Write-Output 'STUDIO:3/5 • Montaggio immagine in sola lettura'
- Mount-WindowsImage -ImagePath $image -Index $sourceIndex -Path """
+ Mount-WindowsImage -LogPath $dismLog -ImagePath $image -Index $sourceIndex -Path """
         + psq(mnt)
         + r""" -ReadOnly -Optimize | Out-Null
  $mounted=$true
@@ -3401,22 +3523,23 @@ try {
         + psq(mnt)
         + r"""
  Write-Output 'STUDIO:4/5 • Lettura delle feature'
- $features=@(Get-WindowsOptionalFeature -Path $p | ForEach-Object {@{Name=$_.FeatureName;State=[string]$_.State}})
+ $features=@(Get-WindowsOptionalFeature -LogPath $dismLog -Path $p | ForEach-Object {@{Name=$_.FeatureName;State=[string]$_.State}})
  Check-Cancel
  Write-Output 'STUDIO:4/5 • Lettura delle capabilities'
- $capabilities=@(Get-WindowsCapability -Path $p | ForEach-Object {@{Name=$_.Name;State=[string]$_.State}})
+ $capabilities=@(Get-WindowsCapability -LogPath $dismLog -Path $p | ForEach-Object {@{Name=$_.Name;State=[string]$_.State}})
  Check-Cancel
  Write-Output 'STUDIO:4/5 • Lettura dei pacchetti'
- $packages=@(Get-WindowsPackage -Path $p | ForEach-Object {@{Name=$_.PackageName;State=[string]$_.PackageState}})
+ $packages=@(Get-WindowsPackage -LogPath $dismLog -Path $p | ForEach-Object {@{Name=$_.PackageName;State=[string]$_.PackageState}})
  @{features=$features;capabilities=$capabilities;packages=$packages} | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 """
         + psq(out)
         + r"""
 } finally {
- Write-Output 'STUDIO:5/5 • Smontaggio e pulizia'
+ Write-Output 'STUDIO:5/5 • Smontaggio immagine WIM'
  $cleanupErrors=@()
- if($mounted){try {Dismount-WindowsImage -Path """
+ if($mounted){try {Dismount-WindowsImage -LogPath $dismLog -Path """
         + psq(mnt)
         + r""" -Discard | Out-Null} catch {$cleanupErrors+=($_ | Out-String)}}
+ Write-Output 'STUDIO:5/5 • Chiusura della ISO'
  if($owned){try {Dismount-DiskImage -ImagePath """
         + psq(iso)
         + r""" | Out-Null} catch {$cleanupErrors+=($_ | Out-String)}}

@@ -69,6 +69,17 @@ class BackendTests(unittest.TestCase):
         with self.assertRaisesRegex(BuildError, "codice 7"):
             self.builder.run([sys.executable, "-c", "import sys;print('broken');sys.exit(7)"])
 
+    def test_command_start_and_finish_are_reported_for_real_process(self):
+        events = []
+        self.builder.on_command_started = lambda label, started: events.append(
+            ("start", label, started)
+        )
+        self.builder.on_command_finished = lambda elapsed: events.append(("finish", elapsed))
+        self.builder.run([sys.executable, "-c", "print('47%')"])
+        self.assertEqual([event[0] for event in events], ["start", "finish"])
+        self.assertGreaterEqual(events[1][1], 0)
+        self.assertTrue(any("Avvio comando:" in line for line in self.logs))
+
     def test_cancel_does_not_launch_next_command(self):
         self.builder.cancel_event.set()
         with patch("winslim.studio.subprocess.Popen") as popen, self.assertRaises(BuildCancelled):

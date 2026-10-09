@@ -1,3 +1,13 @@
+# 4.0.9 — diagnostica delle scansioni lente
+
+- Tempi separati per montaggio, letture, smontaggio WIM, chiusura ISO e cancellazione dei temporanei nel log operativo.
+- Log DISM dedicato alla scansione; ultime righe incluse nel log esportabile prima di eliminare i temporanei.
+- Il catalogo viene dichiarato pronto dopo la pulizia finale, segnalando eventuali file residui.
+- Questa modifica permette di diagnosticare le attese della prima scansione; non promette una velocizzazione delle operazioni DISM.
+- Nome dell’operazione attiva e durata aggiornati anche senza nuove percentuali; comando completo e durata nel log.
+- Il motivo dell’interruzione viene scritto nel log prima dello scarto, con stato «Recupero dopo interruzione» distinto dalla creazione.
+- 87 test automatizzati, inclusi avvio/fine di un processo reale, durata e recupero GUI e scansioni PowerShell con comandi Windows simulati.
+
 # 4.0.8 — pacchetti già rimossi da altri componenti
 
 - Confronto con l'inventario iniziale: un componente presente prima delle modifiche e poi assente viene registrato senza una seconda rimozione.
