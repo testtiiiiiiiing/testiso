@@ -44,7 +44,7 @@ from .safety import (
     resolve_components,
 )
 
-VERSION = "WinSlim Studio 4.0.4"
+VERSION = "WinSlim Studio 4.0.5"
 PENDING = {}
 PROTECTED = {
     "RpcSs",
@@ -765,7 +765,7 @@ def remove_caps_fixed(self):
 
 
 """WinSlim Studio: desktop interface and observable, cancellable workflows."""
-VERSION = "WinSlim Studio 4.0.4"
+VERSION = "WinSlim Studio 4.0.5"
 UI_FONT = "Segoe UI" if IS_WIN else "Helvetica"
 MONO_FONT = "Consolas" if IS_WIN else "Courier"
 SCRIPT_FONT = "Segoe Script" if IS_WIN else "URW Chancery L"
@@ -2681,7 +2681,14 @@ class App(ProjectActions):
             try:
                 builder.build()
                 self.q.put(
-                    ("studio_done", {"out": cfg["out"], "report": cfg["out"] + ".report.json"})
+                    (
+                        "studio_done",
+                        {
+                            "out": cfg["out"],
+                            "report": cfg["out"] + ".report.json",
+                            "warnings": builder.warnings,
+                        },
+                    )
                 )
             except BuildCancelled as e:
                 self.q.put(("studio_cancelled", str(e)))
@@ -2834,12 +2841,17 @@ class App(ProjectActions):
                     self.finish_operation()
                     self.prog["value"] = 100
                     self.done_phases = self.total_phases
-                    self.phase_var.set("ISO creata")
+                    self.operation_warning = "\n".join(val.get("warnings", []))
+                    title = "ISO creata con avvisi" if self.operation_warning else "ISO creata"
+                    self.phase_var.set(title)
                     self.stage_var.set(
                         "%d di %d fasi completate" % (self.total_phases, self.total_phases)
                     )
-                    self.note_var.set(val["out"])
-                    self.status_var.set("Creazione completata")
+                    self.note_var.set(
+                        val["out"]
+                        + ("\n" + self.operation_warning if self.operation_warning else "")
+                    )
+                    self.status_var.set(title)
                     self.last_report = val["report"]
                     for item in self.history_tree.get_children():
                         self.history_tree.set(item, "state", "Completata")

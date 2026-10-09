@@ -1,3 +1,10 @@
+# 4.0.5 — pulizia finale e stato della creazione
+
+- La mancata pulizia dei temporanei dopo la creazione e verifica della ISO viene segnalata come avviso, con il percorso residuo e lo stato «ISO creata con avvisi».
+- Ritentata la rimozione dei file in sola lettura, esclusivamente nella cartella appartenente alla lavorazione e senza seguire collegamenti o junction.
+- Conservati i controlli su immagini montate, hive e proprietà della cartella.
+- Quattro test aggiuntivi su pulizia negata, proprietà cambiata, file in sola lettura e stato GUI: 68 test totali.
+
 # 4.0.4 — scansione componenti più rapida
 
 - Eliminata l'esportazione per ISO con install.wim: l'edizione selezionata viene montata direttamente in sola lettura.

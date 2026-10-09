@@ -1,6 +1,7 @@
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -206,6 +207,22 @@ class BackendTests(unittest.TestCase):
         self.builder.cleanup_on_error()
         self.assertEqual(self.builder.mounted, [self.builder.mnt])
         self.assertTrue(any("conserva" in line for line in self.logs))
+
+    def test_cleanup_retries_readonly_file_without_touching_source(self):
+        root = Path(self.builder.root)
+        (root / "owner.json").write_text(json.dumps({"run_id": self.builder.run_id}))
+        readonly = root / "readonly.txt"
+        readonly.write_text("temporary")
+        readonly.chmod(0o444)
+
+        def simulate_windows_remove(folder, *, onexc):
+            onexc(os.unlink, str(readonly), PermissionError("readonly"))
+
+        with patch("winslim.base.shutil.rmtree", side_effect=simulate_windows_remove):
+            self.builder.cleanup_work()
+        self.assertFalse(readonly.exists())
+        self.assertEqual(self.source.read_bytes(), b"source iso")
+        self.assertEqual(self.output.read_bytes(), b"previous output")
 
     def test_preflight_does_not_delete_previous_work(self):
         marker = Path(self.builder.root) / "user-data.txt"

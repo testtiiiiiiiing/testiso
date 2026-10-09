@@ -155,6 +155,33 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(edition["difference"]["appx"]["removed"], ["Microsoft.BingWeather"])
             self.assertEqual(edition["difference"]["drivers"]["added"], ["oem0.inf"])
 
+    def test_cleanup_access_denied_does_not_fail_completed_iso(self):
+        with patch("winslim.base.shutil.rmtree", side_effect=PermissionError("Accesso negato")):
+            self.builder.build()
+        self.assertEqual(self.output.read_bytes(), b"rebuilt iso")
+        report = json.loads(Path(str(self.output) + ".report.json").read_text())
+        self.assertEqual(report["iso"]["output_sha256"], hashlib.sha256(b"rebuilt iso").hexdigest())
+        self.assertEqual(self.source.read_bytes(), b"immutable source")
+        self.assertTrue(Path(self.builder.root).exists())
+        self.assertEqual(len(self.builder.warnings), 1)
+        self.assertIn("Accesso negato", self.builder.warnings[0])
+        self.assertIn(self.builder.root, self.builder.warnings[0])
+
+    def test_cleanup_does_not_remove_work_with_changed_owner(self):
+        original = self.builder.step_make_iso
+
+        def replace_owner():
+            original()
+            (Path(self.builder.root) / "owner.json").write_text('{"run_id":"another-run"}')
+
+        self.builder.step_make_iso = replace_owner
+        with patch("winslim.base.shutil.rmtree") as remove:
+            self.builder.build()
+        remove.assert_not_called()
+        self.assertEqual(self.output.read_bytes(), b"rebuilt iso")
+        self.assertTrue(Path(self.builder.root).exists())
+        self.assertIn("non appartiene", self.builder.warnings[0])
+
     def test_cancel_immediately_after_mount_discards_it(self):
         self.builder.cancel_on_mount = True
         with self.assertRaises(BuildCancelled):

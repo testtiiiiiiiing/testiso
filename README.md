@@ -58,6 +58,10 @@ e dell'uscita, diagnostica Windows e validazione più rigorosa delle configurazi
 
 La nuova ISO sostituisce l'uscita solo dopo che `oscdimg` e il calcolo SHA-256
 sono terminati. Un errore o annullamento precedente conserva l'uscita esistente.
+Se la ISO è stata creata e verificata, un errore nella pulizia finale dei
+temporanei viene mostrato come avviso con il percorso residuo; l'operazione
+resta completata. La pulizia ritenta sui file in sola lettura della lavorazione,
+controllando proprietà della cartella, immagini montate e hive ancora in uso.
 Le edizioni importate da un JSON devono essere rilette dalla ISO reale.
 La scansione dei componenti monta direttamente `install.wim` in sola lettura,
 senza esportare l'edizione. Per `install.esd` converte soltanto l'edizione
@@ -85,7 +89,7 @@ senza bloccare la creazione della ISO.
 
 ## Test eseguiti e limiti
 
-Sono passati **64 test** con Python 3.12 e 3.13 su Linux, con display virtuale
+Sono passati **68 test** con Python 3.12 e 3.13 su Linux, con display virtuale
 reale per Tk. Coprono le otto pagine, importazione, profili, annullamento,
 protezione dei percorsi, registro, XML, output atomico, hash, dipendenze dei
 driver e un flusso completo multi-edizione con risposte Windows simulate.

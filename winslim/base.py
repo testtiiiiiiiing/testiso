@@ -10,6 +10,7 @@ import os
 import queue
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -457,6 +458,7 @@ class Builder:
         self.osc = ""
         self.dism = "dism.exe"
         self.dism_log = ""
+        self.warnings = []
         self._cleaning = False
         self.run_id = str(time.time_ns())
         self.source_fingerprint = None
@@ -930,6 +932,33 @@ try {
         finally:
             self._cleaning = False
 
+    def cleanup_work(self):
+        if self.mounted or self.hives:
+            raise BuildError("Pulizia impossibile: immagini o hive ancora in uso.")
+        with open(os.path.join(self.root, "owner.json"), encoding="utf-8") as stream:
+            owner = json.load(stream)
+        if owner.get("run_id") != self.run_id:
+            raise BuildError("La cartella di lavoro non appartiene a questa operazione.")
+
+        def retry_readonly(func, path, error):
+            root = os.path.normcase(os.path.realpath(self.root))
+            target = os.path.normcase(os.path.realpath(path))
+            if (
+                not isinstance(error, PermissionError)
+                or os.path.commonpath([root, target]) != root
+                or os.path.islink(path)
+                or (hasattr(os.path, "isjunction") and os.path.isjunction(path))
+                or func not in (os.unlink, os.remove, os.rmdir)
+            ):
+                raise error
+            mode = os.stat(path).st_mode
+            if mode & stat.S_IWRITE:
+                raise error
+            os.chmod(path, mode | stat.S_IWRITE)
+            func(path)
+
+        shutil.rmtree(self.root, onexc=retry_readonly)
+
     def build(self):
         with ServicingLock():
             self._build()
@@ -981,13 +1010,18 @@ try {
             self.cleanup_on_error()
             raise
         if self.c.get("delete_work"):
-            if self.mounted or self.hives:
-                raise BuildError("Pulizia impossibile: immagini o hive ancora in uso.")
-            with open(os.path.join(self.root, "owner.json"), encoding="utf-8") as stream:
-                owner = json.load(stream)
-            if owner.get("run_id") != self.run_id:
-                raise BuildError("La cartella di lavoro non appartiene a questa operazione.")
-            shutil.rmtree(self.root)
+            try:
+                self.cleanup_work()
+            except (OSError, BuildError, ValueError) as error:
+                warning = (
+                    "ISO creata e verificata; pulizia dei temporanei non completata: "
+                    + str(error)
+                    + ". Cartella residua: "
+                    + self.root
+                    + ". Scegli una nuova cartella di lavoro per la prossima creazione."
+                )
+                self.warnings.append(warning)
+                self.log("Avviso: " + warning)
         self.log("ISO creata: " + self.c["out"])
 
 

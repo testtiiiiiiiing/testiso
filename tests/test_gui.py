@@ -41,6 +41,27 @@ class DesktopTests(unittest.TestCase):
                 self.assertEqual(self.app.current_page, page)
                 self.assertTrue(self.app.page_frames[page].winfo_ismapped())
 
+    def test_completed_iso_with_cleanup_warning_shows_success_and_warning(self):
+        self.app.operation = "build"
+        self.app.total_phases = 12
+        self.app.q.put(
+            (
+                "studio_done",
+                {
+                    "out": "result.iso",
+                    "report": "result.iso.report.json",
+                    "warnings": ["Pulizia temporanei non completata: work-folder"],
+                },
+            )
+        )
+        with patch.object(self.app, "after"):
+            self.app._pump()
+        self.assertEqual(self.app.phase_var.get(), "ISO creata con avvisi")
+        self.assertIn("work-folder", self.app.note_var.get())
+        self.assertEqual(self.app.done_phases, 12)
+        self.assertEqual(self.app.last_report, "result.iso.report.json")
+        self.assertIsNone(self.app.operation)
+
     def test_stock_defaults_make_no_removal_requests(self):
         cfg = self.app.collect_build()
         self.assertEqual(cfg["appx"], [])
