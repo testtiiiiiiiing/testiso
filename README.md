@@ -64,9 +64,12 @@ abbreviati o con una vecchia versione vengono risolti solo quando il catalogo
 fornisce una corrispondenza univoca, mantenendo la lingua. I nomi sconosciuti o
 ambigui richiedono una nuova selezione dal catalogo; i componenti standard non
 disponibili e quelli già assenti vengono registrati nel log e nel report.
-Se disponibile accanto a `oscdimg`, DISM del Windows ADK viene usato quando
-la sua versione è più recente di quella del sistema. Gli errori mostrano il
-comando completo, incluso il nome del componente.
+I percorsi passati a DISM vengono convertiti al formato Windows, anche se il
+selettore di cartelle restituisce barre `/`. Viene usato DISM di Windows dalla
+cartella System32, senza selezionare automaticamente quello dell'ADK accanto a
+`oscdimg`. Gli errori mostrano il comando completo, incluso il nome del
+componente. Il log nativo `DISM.log` è nella cartella della lavorazione; in caso
+di errore le ultime righe vengono incluse nel log operativo esportabile.
 I percorsi che coincidono con sorgenti, anche tramite hard link, vengono respinti.
 I file REG vengono indirizzati esclusivamente agli hive offline; il ControlSet
 attivo viene rilevato dal registro dell'immagine.
@@ -77,7 +80,7 @@ senza bloccare la creazione della ISO.
 
 ## Test eseguiti e limiti
 
-Sono passati **57 test** con Python 3.12 e 3.13 su Linux, con display virtuale
+Sono passati **60 test** con Python 3.12 e 3.13 su Linux, con display virtuale
 reale per Tk. Coprono le otto pagine, importazione, profili, annullamento,
 protezione dei percorsi, registro, XML, output atomico, hash, dipendenze dei
 driver e un flusso completo multi-edizione con risposte Windows simulate.

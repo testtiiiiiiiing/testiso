@@ -26,6 +26,7 @@ from .base import (
     FileDialog,
     is_admin,
     read_editions,
+    dism_command,
 )
 
 # Servicing operations adapted from the supplied application.
@@ -43,7 +44,7 @@ from .safety import (
     resolve_components,
 )
 
-VERSION = "WinSlim Studio 4.0.2"
+VERSION = "WinSlim Studio 4.0.3"
 PENDING = {}
 PROTECTED = {
     "RpcSs",
@@ -764,7 +765,7 @@ def remove_caps_fixed(self):
 
 
 """WinSlim Studio: desktop interface and observable, cancellable workflows."""
-VERSION = "WinSlim Studio 4.0.2"
+VERSION = "WinSlim Studio 4.0.3"
 UI_FONT = "Segoe UI" if IS_WIN else "Helvetica"
 MONO_FONT = "Consolas" if IS_WIN else "Courier"
 SCRIPT_FONT = "Segoe Script" if IS_WIN else "URW Chancery L"
@@ -1001,8 +1002,15 @@ def cancelled(builder):
 def run_observable(self, cmd, ok=(0,), quiet=False):
     cancelled(self)
     cmd = list(cmd)
-    if os.path.basename(cmd[0]).casefold() == "dism.exe":
+    import ntpath
+
+    is_dism = ntpath.basename(cmd[0]).casefold() == "dism.exe"
+    if is_dism:
         cmd[0] = self.dism
+        if self.dism_log and not any(a.casefold().startswith("/logpath:") for a in cmd[1:]):
+            cmd.append("/LogPath:" + self.dism_log)
+        if IS_WIN:
+            cmd = dism_command(cmd, self.dism)
     p = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -1028,6 +1036,27 @@ def run_observable(self, cmd, ok=(0,), quiet=False):
         detail = "\n".join(output[-18:])
         if quiet and detail:
             self.log(detail)
+        if is_dism and self.dism_log:
+            self.log("Log DISM della lavorazione: " + self.dism_log)
+            try:
+                with open(self.dism_log, "rb") as stream:
+                    stream.seek(0, os.SEEK_END)
+                    size = stream.tell()
+                    stream.seek(0)
+                    header = stream.read(2)
+                    stream.seek(max(0, size - 128 * 1024))
+                    tail = stream.read()
+                encoding = (
+                    "utf-16-le"
+                    if header == b"\xff\xfe"
+                    else "utf-16-be"
+                    if header == b"\xfe\xff"
+                    else "utf-8"
+                )
+                for line in tail.decode(encoding, errors="replace").splitlines()[-40:]:
+                    self.log("DISM: " + line)
+            except OSError as error:
+                self.log("Log DISM non disponibile: " + str(error))
         raise BuildError(
             "Comando fallito (codice %s): %s\n%s"
             % (rc, subprocess.list2cmdline(list(map(str, cmd))), detail)
@@ -1164,6 +1193,11 @@ def describe_error(err):
         return (
             "DISM non riconosce il componente",
             "Controlla il CapabilityName completo nel log. Se è nel catalogo, usa una versione di Windows/Windows ADK compatibile con la build della ISO.",
+        )
+    if "/mount-image" in low:
+        return (
+            "Montaggio immagine non riuscito",
+            "Esporta il log operativo: include il comando completo e gli ultimi dettagli del log DISM della lavorazione. La ISO sorgente è invariata; usa una nuova cartella di lavoro per riprovare.",
         )
     if "missingendparenthesis" in low or "parsererror" in low:
         return (

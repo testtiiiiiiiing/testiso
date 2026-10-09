@@ -1,3 +1,11 @@
+# 4.0.3 — montaggio immagini e percorsi Windows
+
+- Corretti i percorsi con separatori misti restituiti dal selettore di cartelle, che DISM rifiutava durante Mount-Image con errore 87 (estensione dell'immagine non rilevata).
+- Normalizzazione dei soli argomenti di percorso DISM, mantenendo gli argomenti con spazi separati correttamente.
+- Ripristinato DISM di Windows: nessuna selezione automatica del DISM dell'ADK basata solo sulla versione del file.
+- Log DISM dedicato per lavorazione, con dettagli nativi inclusi nel log operativo in caso di errore.
+- Tre test aggiuntivi: 60 test totali, inclusi percorsi Windows e log UTF-8/UTF-16.
+
 # 4.0.2 — componenti importati e diagnostica DISM
 
 - Nomi dei vecchi JSON risolti dal catalogo reale di ciascuna edizione, preservando la lingua.

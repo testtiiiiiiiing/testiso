@@ -231,44 +231,29 @@ def is_admin():
     return bool(IS_WIN and ctypes.windll.shell32.IsUserAnAdmin())
 
 
-def windows_file_version(path):
-    """Read a local tool's version resource without launching it."""
-    if not IS_WIN:
-        return None
-    from ctypes import wintypes
+def dism_command(cmd, executable):
+    """Normalize only path arguments; subprocess keeps each argument separate."""
+    import ntpath
 
-    lib = ctypes.WinDLL("version", use_last_error=True)
-    lib.GetFileVersionInfoSizeW.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(wintypes.DWORD)]
-    lib.GetFileVersionInfoW.argtypes = [
-        wintypes.LPCWSTR,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        ctypes.c_void_p,
-    ]
-    lib.VerQueryValueW.argtypes = [
-        ctypes.c_void_p,
-        wintypes.LPCWSTR,
-        ctypes.POINTER(ctypes.c_void_p),
-        ctypes.POINTER(wintypes.UINT),
-    ]
-    ignored = wintypes.DWORD()
-    size = lib.GetFileVersionInfoSizeW(str(path), ctypes.byref(ignored))
-    if not size:
-        return None
-    buffer = ctypes.create_string_buffer(size)
-    if not lib.GetFileVersionInfoW(str(path), 0, size, buffer):
-        return None
-    pointer = ctypes.c_void_p()
-    length = wintypes.UINT()
-    if (
-        not lib.VerQueryValueW(buffer, "\\", ctypes.byref(pointer), ctypes.byref(length))
-        or length.value < 52
-    ):
-        return None
-    values = ctypes.cast(pointer, ctypes.POINTER(wintypes.DWORD * 13)).contents
-    if values[0] != 0xFEEF04BD:
-        return None
-    return values[2] >> 16, values[2] & 0xFFFF, values[3] >> 16, values[3] & 0xFFFF
+    path_options = {
+        "/image",
+        "/imagefile",
+        "/mountdir",
+        "/wimfile",
+        "/sourceimagefile",
+        "/destinationimagefile",
+        "/driver",
+        "/packagepath",
+        "/logpath",
+        "/scratchdir",
+    }
+    result = [ntpath.normpath(executable)]
+    for arg in cmd[1:]:
+        key, sep, value = arg.partition(":")
+        result.append(
+            key + sep + ntpath.normpath(value) if sep and key.casefold() in path_options else arg
+        )
+    return result
 
 
 def q(value):
@@ -471,6 +456,7 @@ class Builder:
         self.hives = []
         self.osc = ""
         self.dism = "dism.exe"
+        self.dism_log = ""
         self._cleaning = False
         self.run_id = str(time.time_ns())
         self.source_fingerprint = None
@@ -676,28 +662,21 @@ class Builder:
         self.log("Strumento DISM: " + self.dism)
 
     def find_dism(self):
-        candidate = os.path.join(os.path.dirname(os.path.dirname(self.osc)), "DISM", "dism.exe")
-        system = shutil.which("dism.exe")
-        if os.path.isfile(candidate):
-            if not system:
-                return candidate
-            adk_version, system_version = (
-                windows_file_version(candidate),
-                windows_file_version(system),
-            )
-            if (
-                adk_version is not None
-                and system_version is not None
-                and adk_version > system_version
-            ):
-                return candidate
-        return system or "dism.exe"
+        # ADK file versions alone do not prove compatible WIMMount installation.
+        # Use Windows' own tool, independent of the oscdimg directory or PATH ADK.
+        system_root = os.environ.get("SystemRoot")
+        if system_root:
+            system = os.path.normpath(os.path.join(system_root, "System32", "dism.exe"))
+            if os.path.isfile(system):
+                return system
+        return shutil.which("dism.exe") or "dism.exe"
 
     def step_extract(self):
         # mkdir is exclusive: a concurrent build cannot take over this work tree.
         os.mkdir(self.root)
         with open(os.path.join(self.root, "owner.json"), "x", encoding="utf-8") as stream:
             json.dump({"run_id": self.run_id, "pid": os.getpid()}, stream)
+        self.dism_log = os.path.join(self.root, "DISM.log")
         for path in (self.isodir, self.mnt, self.bmnt):
             os.mkdir(path)
         iso = q(os.path.abspath(self.c["iso"]))

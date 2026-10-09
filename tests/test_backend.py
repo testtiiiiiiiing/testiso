@@ -83,22 +83,72 @@ class BackendTests(unittest.TestCase):
                     ]
                 )
 
-    def test_newer_adk_dism_selected_without_downgrading_system(self):
+    def test_adk_is_not_selected_from_oscdimg_directory(self):
         self.builder.osc = str(self.root / "ADK" / "amd64" / "Oscdimg" / "oscdimg.exe")
         adk = self.root / "ADK" / "amd64" / "DISM" / "dism.exe"
         adk.parent.mkdir(parents=True)
         adk.write_bytes(b"fixture")
-        with patch("winslim.base.shutil.which", return_value="system-dism.exe"):
-            with patch(
-                "winslim.base.windows_file_version",
-                side_effect=[(10, 0, 26300, 1), (10, 0, 26100, 1)],
-            ):
-                self.assertEqual(self.builder.find_dism(), str(adk))
-            with patch(
-                "winslim.base.windows_file_version",
-                side_effect=[(10, 0, 22000, 1), (10, 0, 26100, 1)],
-            ):
+        with patch.dict("os.environ", {"SystemRoot": str(self.root / "no-windows")}):
+            with patch("winslim.base.shutil.which", return_value="system-dism.exe"):
                 self.assertEqual(self.builder.find_dism(), "system-dism.exe")
+
+    def test_windows_dism_is_selected_even_when_adk_is_on_path(self):
+        system_root = self.root / "Windows"
+        system = system_root / "System32" / "dism.exe"
+        system.parent.mkdir(parents=True)
+        system.write_bytes(b"fixture")
+        with patch.dict("os.environ", {"SystemRoot": str(system_root)}):
+            with patch("winslim.base.shutil.which", return_value="ADK-dism.exe"):
+                self.assertEqual(self.builder.find_dism(), str(system))
+
+    def test_mount_normalizes_dialog_paths_at_process_boundary(self):
+        class Process:
+            stdout = io.StringIO("")
+
+            def wait(self):
+                return 0
+
+        self.builder.dism = "C:/Windows/System32/dism.exe"
+        self.builder.dism_log = "C:/Users/user/Desktop/work folder/WinSlim_work/DISM.log"
+        image = "C:/Users/user/Desktop/work folder/WinSlim_work/iso/sources/install.wim"
+        mount = "C:/Users/user/Desktop/work folder/WinSlim_work/mount"
+        with patch("winslim.studio.IS_WIN", True):
+            with patch("winslim.studio.subprocess.Popen", return_value=Process()) as popen:
+                base.Builder.mount(self.builder, image, 1, mount)
+        command = popen.call_args.args[0]
+        self.assertEqual(command[0], r"C:\Windows\System32\dism.exe")
+        self.assertIn(
+            r"/ImageFile:C:\Users\user\Desktop\work folder\WinSlim_work\iso\sources\install.wim",
+            command,
+        )
+        self.assertIn(r"/MountDir:C:\Users\user\Desktop\work folder\WinSlim_work\mount", command)
+        self.assertIn(r"/LogPath:C:\Users\user\Desktop\work folder\WinSlim_work\DISM.log", command)
+        self.assertEqual(self.builder.mounted, [mount])
+
+    def test_failed_mount_captures_native_log_without_retry_or_registration(self):
+        class Process:
+            def __init__(self):
+                self.stdout = io.StringIO(
+                    "Error: 87\nAn error occurred while processing the command.\n"
+                )
+
+            def wait(self):
+                return 87
+
+        self.builder.dism_log = str(self.root / "DISM.log")
+        for encoding in ("utf-8-sig", "utf-16"):
+            with self.subTest(encoding=encoding):
+                Path(self.builder.dism_log).write_text(
+                    "Failed to get the filename extension of the image file. hr:0x80070057\n",
+                    encoding=encoding,
+                )
+                with patch("winslim.studio.subprocess.Popen", return_value=Process()) as popen:
+                    with self.assertRaisesRegex(BuildError, "codice 87"):
+                        base.Builder.mount(self.builder, "image.wim", 1, self.builder.mnt)
+                popen.assert_called_once()
+                self.assertEqual(self.builder.mounted, [])
+                self.assertTrue(any("hr:0x80070057" in line for line in self.logs))
+                self.logs.clear()
 
     def test_failed_iso_build_preserves_previous_output(self):
         def failing(cmd, **kw):
