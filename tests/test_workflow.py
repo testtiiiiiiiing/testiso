@@ -30,6 +30,8 @@ class SimulatedWindows(Builder):
         self.cancel_event = threading.Event()
         self.cancel_on_mount = False
         self.change_source = False
+        self.capabilities = {"MathRecognizer~~~~0.0.2.0": "Installed"}
+        self.capability_removals = []
 
     def ps(self, script, quiet=False):
         self.check_cancel()
@@ -68,6 +70,18 @@ class SimulatedWindows(Builder):
                 "Published Name : oem0.inf",
                 "Provider Name : Fixture",
             ] if self.driver_added.get(self.active_index) else []
+        if "/Get-Capabilities" in cmd:
+            return 0, [
+                line
+                for name, state in self.capabilities.items()
+                for line in ["Capability Identity : " + name, "State : " + state]
+            ]
+        if "/Remove-Capability" in cmd:
+            name = next(arg.split(":", 1)[1] for arg in cmd if arg.startswith("/CapabilityName:"))
+            if name not in self.capabilities:
+                raise BuildError("Error: 87 A Windows capability name was not recognized.")
+            self.capability_removals.append(name)
+            self.capabilities[name] = "Not Present"
         if "/Add-Driver" in cmd:
             self.driver_added[self.active_index] = True
         if "/Commit" in cmd:
@@ -156,3 +170,30 @@ class WorkflowTests(unittest.TestCase):
             self.builder.build()
         self.assertEqual(self.builder.exports, [])
         self.assertEqual(self.output.read_bytes(), b"old output")
+
+    def test_legacy_capability_name_uses_live_inventory_and_reports_resolution(self):
+        self.builder.extra["capabilities"] = ["MathRecognizer~~~~0.0.1.0"]
+        self.builder.build()
+        self.assertEqual(self.builder.capability_removals, ["MathRecognizer~~~~0.0.2.0"])
+        report = json.loads(Path(str(self.output) + ".report.json").read_text())
+        self.assertEqual(
+            report["editions"][0]["component_resolution"][0]["resolved"],
+            "MathRecognizer~~~~0.0.2.0",
+        )
+        self.assertEqual(
+            report["editions"][1]["component_resolution"][0]["status"], "already_absent"
+        )
+
+    def test_invalid_capability_stops_before_app_removal(self):
+        self.builder.extra["capabilities"] = ["BogusCapability"]
+        with self.assertRaisesRegex(BuildError, "BogusCapability"):
+            self.builder.build()
+        self.assertEqual(self.builder.removed_apps, {})
+        self.assertEqual(self.builder.discards, [1])
+        self.assertEqual(self.output.read_bytes(), b"old output")
+
+    def test_standard_and_advanced_same_capability_do_not_remove_twice(self):
+        self.builder.c["caps"] = ["Math Recognizer"]
+        self.builder.extra["capabilities"] = ["MathRecognizer~~~~0.0.1.0"]
+        self.builder.build()
+        self.assertEqual(self.builder.capability_removals, ["MathRecognizer~~~~0.0.2.0"])

@@ -1,3 +1,12 @@
+# 4.0.2 — componenti importati e diagnostica DISM
+
+- Nomi dei vecchi JSON risolti dal catalogo reale di ciascuna edizione, preservando la lingua.
+- Selezioni sconosciute o ambigue segnalate prima delle rimozioni, salvo componenti introdotti dagli aggiornamenti.
+- Componenti già assenti o standard non disponibili registrati senza inviare nomi inesistenti a DISM.
+- Rimozioni standard effettuate con identità complete; nessuna doppia rimozione standard/avanzata.
+- DISM del Windows ADK preferito quando più recente del sistema; comando completo nei messaggi di errore.
+- Undici test di regressione aggiunti: 57 test totali.
+
 # 4.0.1 — correzione importazioni precedenti
 
 - Le richieste legacy di rimozione Defender vengono ignorate, preservando la protezione.

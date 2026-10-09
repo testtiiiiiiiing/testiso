@@ -231,6 +231,46 @@ def is_admin():
     return bool(IS_WIN and ctypes.windll.shell32.IsUserAnAdmin())
 
 
+def windows_file_version(path):
+    """Read a local tool's version resource without launching it."""
+    if not IS_WIN:
+        return None
+    from ctypes import wintypes
+
+    lib = ctypes.WinDLL("version", use_last_error=True)
+    lib.GetFileVersionInfoSizeW.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(wintypes.DWORD)]
+    lib.GetFileVersionInfoW.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+    ]
+    lib.VerQueryValueW.argtypes = [
+        ctypes.c_void_p,
+        wintypes.LPCWSTR,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(wintypes.UINT),
+    ]
+    ignored = wintypes.DWORD()
+    size = lib.GetFileVersionInfoSizeW(str(path), ctypes.byref(ignored))
+    if not size:
+        return None
+    buffer = ctypes.create_string_buffer(size)
+    if not lib.GetFileVersionInfoW(str(path), 0, size, buffer):
+        return None
+    pointer = ctypes.c_void_p()
+    length = wintypes.UINT()
+    if (
+        not lib.VerQueryValueW(buffer, "\\", ctypes.byref(pointer), ctypes.byref(length))
+        or length.value < 52
+    ):
+        return None
+    values = ctypes.cast(pointer, ctypes.POINTER(wintypes.DWORD * 13)).contents
+    if values[0] != 0xFEEF04BD:
+        return None
+    return values[2] >> 16, values[2] & 0xFFFF, values[3] >> 16, values[3] & 0xFFFF
+
+
 def q(value):
     return "'" + str(value).replace("'", "''") + "'"
 
@@ -430,6 +470,7 @@ class Builder:
         self.mounted = []
         self.hives = []
         self.osc = ""
+        self.dism = "dism.exe"
         self._cleaning = False
         self.run_id = str(time.time_ns())
         self.source_fingerprint = None
@@ -631,6 +672,26 @@ class Builder:
         if shutil.disk_usage(output_parent).free < os.path.getsize(c["iso"]):
             raise BuildError("Spazio insufficiente per la ISO di uscita.")
         self.osc = self.find_oscdimg()
+        self.dism = self.find_dism()
+        self.log("Strumento DISM: " + self.dism)
+
+    def find_dism(self):
+        candidate = os.path.join(os.path.dirname(os.path.dirname(self.osc)), "DISM", "dism.exe")
+        system = shutil.which("dism.exe")
+        if os.path.isfile(candidate):
+            if not system:
+                return candidate
+            adk_version, system_version = (
+                windows_file_version(candidate),
+                windows_file_version(system),
+            )
+            if (
+                adk_version is not None
+                and system_version is not None
+                and adk_version > system_version
+            ):
+                return candidate
+        return system or "dism.exe"
 
     def step_extract(self):
         # mkdir is exclusive: a concurrent build cannot take over this work tree.

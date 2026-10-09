@@ -1,7 +1,7 @@
 {
-  "version": "4.0.1",
+  "version": "4.0.2",
   "original_sha256": "2c7c11d59259a9d43f8bf05451a928438b4a134a98e0e62d07e5f02a49364d80",
-  "output_sha256": "ea755a5cc226b10e152f90063110830a7d77fc953a62d4e173b9eb29fad8468b",
+  "output_sha256": "a08700c777285b39e98df854bef2615e8518502733d3cb51e5f43abf14799248",
   "runtime_origin": "Windows Python/Tcl runtime and bootloader from the user-uploaded EXE",
   "application": "Replaced with winslim Python sources in this repository",
   "windows_execution_tested": false,
@@ -12,10 +12,10 @@
     "winslim"
   ],
   "source_sha256": {
-    "winslim/__init__.py": "01ee0a71773830284e425bdb474272d9807a81b9e24d2dc5376ee630790219f4",
+    "winslim/__init__.py": "a176329ab4da20ddb85e4c4e2803ee1ac27c8412c8da22eaea1cc14d638182d6",
     "winslim/__main__.py": "3af1479e90d95047451266bfd9a133aead3a347c7ce1813e6fb7299dc68d2501",
-    "winslim/base.py": "7f881e2f13a72cc3c8f67f2cc97a0c0cc0eac210def4bd2cb5af1724e9896fd9",
-    "winslim/safety.py": "1a9d96144c04ffd00782accd9a2b6a83735bce0e19fb22fc7d7e1ca4df75baaf",
-    "winslim/studio.py": "3ad6a9d67e756fca2e34295faf8c0d293e350b85a85a97266b5ef970cdccb74a"
+    "winslim/base.py": "f518da7251a37949f83e82e38e5ae149b738016edd4047b631f9dba2d1f49bf9",
+    "winslim/safety.py": "d07cd24d89677fe93175f482827c134c87a28f3caae153e91e112d2e3778d441",
+    "winslim/studio.py": "63a250714bc012bf61683a939ea837977ced1cc82e7deec14fe42cf2de66226e"
   }
 }

@@ -59,6 +59,14 @@ e dell'uscita, diagnostica Windows e validazione più rigorosa delle configurazi
 La nuova ISO sostituisce l'uscita solo dopo che `oscdimg` e il calcolo SHA-256
 sono terminati. Un errore o annullamento precedente conserva l'uscita esistente.
 Le edizioni importate da un JSON devono essere rilette dalla ISO reale.
+I nomi dei componenti importati vengono verificati per ogni edizione. I nomi
+abbreviati o con una vecchia versione vengono risolti solo quando il catalogo
+fornisce una corrispondenza univoca, mantenendo la lingua. I nomi sconosciuti o
+ambigui richiedono una nuova selezione dal catalogo; i componenti standard non
+disponibili e quelli già assenti vengono registrati nel log e nel report.
+Se disponibile accanto a `oscdimg`, DISM del Windows ADK viene usato quando
+la sua versione è più recente di quella del sistema. Gli errori mostrano il
+comando completo, incluso il nome del componente.
 I percorsi che coincidono con sorgenti, anche tramite hard link, vengono respinti.
 I file REG vengono indirizzati esclusivamente agli hive offline; il ControlSet
 attivo viene rilevato dal registro dell'immagine.
@@ -69,7 +77,7 @@ senza bloccare la creazione della ISO.
 
 ## Test eseguiti e limiti
 
-Sono passati **46 test** con Python 3.12 e 3.13 su Linux, con display virtuale
+Sono passati **57 test** con Python 3.12 e 3.13 su Linux, con display virtuale
 reale per Tk. Coprono le otto pagine, importazione, profili, annullamento,
 protezione dei percorsi, registro, XML, output atomico, hash, dipendenze dei
 driver e un flusso completo multi-edizione con risposte Windows simulate.

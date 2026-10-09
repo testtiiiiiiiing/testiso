@@ -1,4 +1,5 @@
 import hashlib
+import io
 import json
 from pathlib import Path
 import sys
@@ -62,6 +63,42 @@ class BackendTests(unittest.TestCase):
         with patch("winslim.studio.subprocess.Popen") as popen, self.assertRaises(BuildCancelled):
             self.builder.run(["must-not-launch"])
         popen.assert_not_called()
+
+    def test_capability_failure_reports_full_identifier(self):
+        class Process:
+            stdout = io.StringIO("Error: 87\nA Windows capability name was not recognized.\n")
+
+            def wait(self):
+                return 87
+
+        with patch("winslim.studio.subprocess.Popen", return_value=Process()):
+            with self.assertRaisesRegex(BuildError, "CapabilityName:InvalidCapability"):
+                self.builder.run(
+                    [
+                        "dism.exe",
+                        "/English",
+                        "/Image:test",
+                        "/Remove-Capability",
+                        "/CapabilityName:InvalidCapability",
+                    ]
+                )
+
+    def test_newer_adk_dism_selected_without_downgrading_system(self):
+        self.builder.osc = str(self.root / "ADK" / "amd64" / "Oscdimg" / "oscdimg.exe")
+        adk = self.root / "ADK" / "amd64" / "DISM" / "dism.exe"
+        adk.parent.mkdir(parents=True)
+        adk.write_bytes(b"fixture")
+        with patch("winslim.base.shutil.which", return_value="system-dism.exe"):
+            with patch(
+                "winslim.base.windows_file_version",
+                side_effect=[(10, 0, 26300, 1), (10, 0, 26100, 1)],
+            ):
+                self.assertEqual(self.builder.find_dism(), str(adk))
+            with patch(
+                "winslim.base.windows_file_version",
+                side_effect=[(10, 0, 22000, 1), (10, 0, 26100, 1)],
+            ):
+                self.assertEqual(self.builder.find_dism(), "system-dism.exe")
 
     def test_failed_iso_build_preserves_previous_output(self):
         def failing(cmd, **kw):

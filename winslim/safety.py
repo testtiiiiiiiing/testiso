@@ -68,6 +68,102 @@ def same_file(a, b):
         return False
 
 
+def component_records(lines, field):
+    """Read canonical identities from DISM /English inventory output."""
+    identity_key = {
+        "features": "Feature Name",
+        "capabilities": "Capability Identity",
+        "packages": "Package Identity",
+    }[field]
+    records = {}
+    current = None
+    for line in lines:
+        key, sep, value = line.partition(":")
+        if not sep:
+            continue
+        if key.strip() == identity_key:
+            current = value.strip()
+            records[current] = ""
+        elif current and key.strip() == "State":
+            records[current] = value.strip()
+    return records
+
+
+def resolve_components(extra, inventory, log, optional_capabilities=()):
+    """Resolve names against this edition; never pass arbitrary names to DISM."""
+    resolved = {field: [] for field in ("features", "capabilities", "packages")}
+    decisions = []
+    for field in resolved:
+        available = component_records(inventory.get(field, []), field)
+        for requested in extra.get(field, []):
+            candidates = [n for n in available if n.casefold() == requested.casefold()]
+            if field == "capabilities" and not candidates:
+                if "~" not in requested:
+                    candidates = [
+                        n for n in available if n.casefold().startswith(requested.casefold() + "~")
+                    ]
+                elif re.fullmatch(r"\d+(?:\.\d+){3}", requested.rsplit("~", 1)[-1]):
+                    identity = requested.rsplit("~", 1)[0].casefold()
+                    candidates = [
+                        n for n in available if n.rsplit("~", 1)[0].casefold() == identity
+                    ]
+            if len(candidates) > 1:
+                raise BuildError(
+                    "Nome componente ambiguo: "
+                    + requested
+                    + ". Scegli il nome completo dal catalogo: "
+                    + ", ".join(candidates)
+                )
+            if not candidates:
+                base = requested.split("~", 1)[0].casefold()
+                if field == "capabilities" and base in {
+                    n.casefold() for n in optional_capabilities
+                }:
+                    log(
+                        "Componente standard non disponibile in questa edizione, nessuna rimozione: "
+                        + requested
+                    )
+                    decisions.append(
+                        {
+                            "area": field,
+                            "requested": requested,
+                            "resolved": None,
+                            "status": "unavailable",
+                        }
+                    )
+                    continue
+                raise BuildError(
+                    "Componente non presente nel catalogo di questa edizione ("
+                    + field
+                    + "): "
+                    + requested
+                    + ". Riscansiona la ISO e seleziona il nome completo; controlla anche la versione di DISM/Windows ADK."
+                )
+            name = candidates[0]
+            state = available[name]
+            if field == "capabilities" and not state:
+                raise BuildError("Stato del componente non rilevato: " + name)
+            if field == "capabilities" and state.replace(" ", "").casefold() == "notpresent":
+                log("Componente già assente, nessuna rimozione: " + name)
+                decisions.append(
+                    {
+                        "area": field,
+                        "requested": requested,
+                        "resolved": name,
+                        "status": "already_absent",
+                    }
+                )
+                continue
+            if name != requested:
+                log("Nome componente risolto dal catalogo: " + requested + " → " + name)
+            if name not in resolved[field]:
+                resolved[field].append(name)
+            decisions.append(
+                {"area": field, "requested": requested, "resolved": name, "status": "selected"}
+            )
+    return resolved, decisions
+
+
 def validate_build_paths(cfg, root):
     inputs = [cfg["iso"]] + cfg.get("regfiles", [])
     extra = cfg.get("extra", {})

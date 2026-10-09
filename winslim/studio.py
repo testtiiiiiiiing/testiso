@@ -39,9 +39,11 @@ from .safety import (
     validate_config,
     apply_config,
     within,
+    component_records,
+    resolve_components,
 )
 
-VERSION = "WinSlim Studio 4.0.1"
+VERSION = "WinSlim Studio 4.0.2"
 PENDING = {}
 PROTECTED = {
     "RpcSs",
@@ -361,6 +363,9 @@ def extended_mount(self, img, idx, path):
     if path == self.mnt:
         self.plus_index = idx
         self.plus_before = inventory(self, path)
+        # Validate before edits unless updates may introduce the requested components.
+        if not self.extra.get("updates"):
+            resolve_components(self.extra, self.plus_before, self.log, [p for _, p, _ in CAPS])
 
 
 def service_changes(self):
@@ -509,7 +514,18 @@ def extended_dismount(self, path, save=True):
                 ],
                 ok=(0, 3010),
             )
-        for name in e.get("features", []):
+        current = {}
+        for field, option in [
+            ("features", "/Get-Features"),
+            ("capabilities", "/Get-Capabilities"),
+            ("packages", "/Get-Packages"),
+        ]:
+            if e.get(field):
+                _, current[field] = self.run(
+                    ["dism.exe", "/English", "/Image:" + path, option], quiet=True
+                )
+        components, decisions = resolve_components(e, current, self.log, [p for _, p, _ in CAPS])
+        for name in components["features"]:
             self.run(
                 [
                     "dism.exe",
@@ -522,7 +538,7 @@ def extended_dismount(self, path, save=True):
                 ],
                 ok=(0, 3010),
             )
-        for name in e.get("capabilities", []):
+        for name in components["capabilities"]:
             self.run(
                 [
                     "dism.exe",
@@ -530,10 +546,11 @@ def extended_dismount(self, path, save=True):
                     "/Image:" + path,
                     "/Remove-Capability",
                     "/CapabilityName:" + name,
+                    "/NoRestart",
                 ],
                 ok=(0, 3010),
             )
-        for name in e.get("packages", []):
+        for name in components["packages"]:
             self.run(
                 [
                     "dism.exe",
@@ -562,6 +579,7 @@ def extended_dismount(self, path, save=True):
                 "before": self.plus_before,
                 "after": after,
                 "difference": inventory_diff(self.plus_before, after),
+                "component_resolution": decisions,
             }
         )
     _original_dismount(self, path, save)
@@ -709,38 +727,44 @@ class ProjectActions(_BaseApp):
 # PowerShell 5.1: statements separated by ';' cannot be used inside an
 # ordinary parenthesized boolean operand. Enumerate explicitly instead.
 def remove_caps_fixed(self):
-    prefixes = [prefix for label, prefix, _ in CAPS if label in self.c.get("caps", [])]
+    prefixes = [prefix.casefold() for label, prefix, _ in CAPS if label in self.c.get("caps", [])]
     if not prefixes:
         self.log("   (nessun componente selezionato)")
         return
-    script = (
-        "$pref=@("
-        + ",".join(psq(p) for p in prefixes)
-        + ")\n$image="
-        + psq(self.mnt)
-        + r"""
-$available=@(Get-WindowsCapability -Path $image)
-foreach($cap in $available) {
- if($cap.State -ne 'Installed') { continue }
- $selected=$false
- foreach($prefix in $pref) {
-  if($cap.Name -like ($prefix+'*')) { $selected=$true; break }
- }
- if(!$selected) { continue }
- try {
-  Remove-WindowsCapability -Path $image -Name $cap.Name -ErrorAction Stop | Out-Null
-  Write-Host ('Rimosso: '+$cap.Name)
- } catch {
-  throw ('Rimozione fallita per '+$cap.Name+': '+$_.Exception.Message)
- }
-}
-"""
+    _, output = self.run(
+        ["dism.exe", "/English", "/Image:" + self.mnt, "/Get-Capabilities"], quiet=True
     )
-    self.ps(script)
+    records = component_records(output, "capabilities")
+    found = 0
+    for name, state in records.items():
+        if state.casefold() != "installed":
+            continue
+        if not any(
+            name.casefold() == prefix or name.casefold().startswith(prefix + "~")
+            for prefix in prefixes
+        ):
+            continue
+        self.run(
+            [
+                "dism.exe",
+                "/English",
+                "/Image:" + self.mnt,
+                "/Remove-Capability",
+                "/CapabilityName:" + name,
+                "/NoRestart",
+            ],
+            ok=(0, 3010),
+        )
+        self.log("Componente standard rimosso: " + name)
+        found += 1
+    if not found:
+        self.log(
+            "Componenti standard selezionati già assenti o non disponibili in questa edizione."
+        )
 
 
 """WinSlim Studio: desktop interface and observable, cancellable workflows."""
-VERSION = "WinSlim Studio 4.0.1"
+VERSION = "WinSlim Studio 4.0.2"
 UI_FONT = "Segoe UI" if IS_WIN else "Helvetica"
 MONO_FONT = "Consolas" if IS_WIN else "Courier"
 SCRIPT_FONT = "Segoe Script" if IS_WIN else "URW Chancery L"
@@ -976,6 +1000,9 @@ def cancelled(builder):
 
 def run_observable(self, cmd, ok=(0,), quiet=False):
     cancelled(self)
+    cmd = list(cmd)
+    if os.path.basename(cmd[0]).casefold() == "dism.exe":
+        cmd[0] = self.dism
     p = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -1002,7 +1029,8 @@ def run_observable(self, cmd, ok=(0,), quiet=False):
         if quiet and detail:
             self.log(detail)
         raise BuildError(
-            "Comando fallito (codice %s): %s\n%s" % (rc, " ".join(map(str, cmd[:4])), detail)
+            "Comando fallito (codice %s): %s\n%s"
+            % (rc, subprocess.list2cmdline(list(map(str, cmd))), detail)
         )
     return rc, output
 
@@ -1126,6 +1154,16 @@ def describe_error(err):
         return (
             "Manca lo strumento per creare la ISO",
             "Installa “Strumenti di distribuzione” del Windows ADK, oppure scegli oscdimg.exe nella pagina Sorgente.",
+        )
+    if "componente non presente nel catalogo" in low or "nome componente ambiguo" in low:
+        return (
+            "Selezione componenti da aggiornare",
+            "Il JSON contiene un nome non valido per questa edizione. Riscansiona la ISO e sostituisci la voce indicata usando il nome completo del catalogo.",
+        )
+    if "windows capability name was not recognized" in low:
+        return (
+            "DISM non riconosce il componente",
+            "Controlla il CapabilityName completo nel log. Se è nel catalogo, usa una versione di Windows/Windows ADK compatibile con la build della ISO.",
         )
     if "missingendparenthesis" in low or "parsererror" in low:
         return (

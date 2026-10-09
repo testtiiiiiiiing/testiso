@@ -16,7 +16,84 @@ from winslim.safety import (
     sha256_file,
     validate_build_paths,
     validate_config,
+    resolve_components,
 )
+
+
+class ComponentResolutionTests(unittest.TestCase):
+    def catalog(self, **states):
+        return {
+            "capabilities": [
+                line
+                for name, state in states.items()
+                for line in ["Capability Identity : " + name, "State : " + state]
+            ]
+        }
+
+    def test_bare_name_resolves_to_full_installed_identity(self):
+        log = []
+        names, decisions = resolve_components(
+            {"capabilities": ["MathRecognizer"]},
+            self.catalog(**{"MathRecognizer~~~~0.0.2.0": "Installed"}),
+            log.append,
+        )
+        self.assertEqual(names["capabilities"], ["MathRecognizer~~~~0.0.2.0"])
+        self.assertEqual(decisions[0]["requested"], "MathRecognizer")
+        self.assertTrue(log)
+
+    def test_old_version_resolves_without_changing_language(self):
+        names, _ = resolve_components(
+            {"capabilities": ["Language.Basic~~~it-IT~0.0.1.0"]},
+            self.catalog(
+                **{
+                    "Language.Basic~~~it-IT~0.0.2.0": "Installed",
+                    "Language.Basic~~~en-US~0.0.2.0": "Installed",
+                }
+            ),
+            lambda line: None,
+        )
+        self.assertEqual(names["capabilities"], ["Language.Basic~~~it-IT~0.0.2.0"])
+
+    def test_ambiguous_language_prefix_is_rejected(self):
+        with self.assertRaisesRegex(BuildError, "ambiguo"):
+            resolve_components(
+                {"capabilities": ["Language.Basic"]},
+                self.catalog(
+                    **{
+                        "Language.Basic~~~it-IT~0.0.1.0": "Installed",
+                        "Language.Basic~~~en-US~0.0.1.0": "Installed",
+                    }
+                ),
+                lambda line: None,
+            )
+
+    def test_known_standard_missing_and_not_present_are_reported(self):
+        log = []
+        names, decisions = resolve_components(
+            {"capabilities": ["Microsoft.Windows.WordPad~~~~0.0.1.0", "MathRecognizer"]},
+            self.catalog(**{"MathRecognizer~~~~0.0.1.0": "Not Present"}),
+            log.append,
+            ["Microsoft.Windows.WordPad"],
+        )
+        self.assertEqual(names["capabilities"], [])
+        self.assertEqual([d["status"] for d in decisions], ["unavailable", "already_absent"])
+        self.assertEqual(len(log), 2)
+
+    def test_unknown_name_rejected_not_silently_ignored(self):
+        with self.assertRaisesRegex(BuildError, "BogusCapability"):
+            resolve_components(
+                {"capabilities": ["BogusCapability"]},
+                self.catalog(**{"MathRecognizer~~~~0.0.1.0": "Installed"}),
+                lambda line: None,
+            )
+
+    def test_same_component_is_not_removed_twice(self):
+        names, _ = resolve_components(
+            {"capabilities": ["MathRecognizer", "MathRecognizer~~~~0.0.1.0"]},
+            self.catalog(**{"MathRecognizer~~~~0.0.1.0": "Installed"}),
+            lambda line: None,
+        )
+        self.assertEqual(names["capabilities"], ["MathRecognizer~~~~0.0.1.0"])
 
 
 class SafetyTests(unittest.TestCase):
