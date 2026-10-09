@@ -1,3 +1,9 @@
+# 4.0.1 — correzione importazioni precedenti
+
+- Le richieste legacy di rimozione Defender vengono ignorate, preservando la protezione.
+- Lo stato interno precedente non blocca più la creazione della ISO.
+- Due test di regressione aggiunti: 46 test totali.
+
 # 4.0.0 — anteprima
 
 - Motore di base riscritto con sorgenti leggibili e moduli separati.

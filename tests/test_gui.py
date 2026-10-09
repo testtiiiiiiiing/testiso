@@ -74,6 +74,20 @@ class DesktopTests(unittest.TestCase):
         self.assertFalse(self.app.tw_vars["telemetry"].get())
         self.assertFalse(self.app.appx_vars["Meteo"].get())
 
+    def test_legacy_defender_request_is_normalized_on_import(self):
+        cfg = self.app.config()
+        cfg["variables"]["v_defender"] = True
+        check_config(cfg, self.app)
+        apply_config(self.app, cfg)
+        self.assertFalse(self.app.v_defender.get())
+        self.assertFalse(self.app.collect_build()["defender"])
+        self.assertFalse(self.app.config()["variables"]["v_defender"])
+
+    def test_stale_defender_state_cannot_block_build(self):
+        self.app.v_defender.set(True)
+        self.assertFalse(self.app.collect_build()["defender"])
+        self.assertFalse(self.app.v_defender.get())
+
     def test_invalid_import_leaves_state_unchanged(self):
         before = self.app.config()
         with tempfile.TemporaryDirectory() as temp:

@@ -235,6 +235,11 @@ def apply_config(app, cfg):
         getattr(app, key).set(value)
     for key, value in cfg.get("variables", {}).items():
         getattr(app, key).set(value)
+    if cfg.get("variables", {}).get("v_defender"):
+        app.log(
+            "Configurazione precedente: richiesta di rimozione Defender ignorata; protezione preservata."
+        )
+    app.v_defender.set(False)
     app.v_pwd.set("")
     for field, mapping in [
         ("appx", app.appx_vars),

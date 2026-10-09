@@ -41,7 +41,7 @@ from .safety import (
     within,
 )
 
-VERSION = "WinSlim Studio 4.0"
+VERSION = "WinSlim Studio 4.0.1"
 PENDING = {}
 PROTECTED = {
     "RpcSs",
@@ -740,7 +740,7 @@ foreach($cap in $available) {
 
 
 """WinSlim Studio: desktop interface and observable, cancellable workflows."""
-VERSION = "WinSlim Studio 4.0"
+VERSION = "WinSlim Studio 4.0.1"
 UI_FONT = "Segoe UI" if IS_WIN else "Helvetica"
 MONO_FONT = "Consolas" if IS_WIN else "Courier"
 SCRIPT_FONT = "Segoe Script" if IS_WIN else "URW Chancery L"
@@ -2448,6 +2448,9 @@ class App(ProjectActions):
         self.profile_var.set("Configurazione importata · rileggi le edizioni")
 
     def collect_build(self):
+        # Legacy JSONs can request a feature no longer exposed by the interface.
+        # Normalize it here too so stale UI state cannot block a supported build.
+        self.v_defender.set(False)
         selected = self.selected_editions()
         return {
             "iso": self.v_iso.get().strip(),

@@ -64,12 +64,12 @@ I file REG vengono indirizzati esclusivamente agli hive offline; il ControlSet
 attivo viene rilevato dal registro dell'immagine.
 
 **Defender viene preservato:** la rimozione fisica presente nell'originale è stata
-esclusa perché non verificabile in modo affidabile fra build. I vecchi JSON che
-la richiedono devono disattivare `variables.v_defender` prima di creare.
+esclusa perché non verificabile in modo affidabile fra build. Le richieste di rimozione Defender nei vecchi JSON vengono ignorate automaticamente,
+senza bloccare la creazione della ISO.
 
 ## Test eseguiti e limiti
 
-Sono passati **44 test** con Python 3.12 e 3.13 su Linux, con display virtuale
+Sono passati **46 test** con Python 3.12 e 3.13 su Linux, con display virtuale
 reale per Tk. Coprono le otto pagine, importazione, profili, annullamento,
 protezione dei percorsi, registro, XML, output atomico, hash, dipendenze dei
 driver e un flusso completo multi-edizione con risposte Windows simulate.
