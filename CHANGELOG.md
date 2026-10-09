@@ -1,3 +1,10 @@
+# 4.0.4 — scansione componenti più rapida
+
+- Eliminata l'esportazione per ISO con install.wim: l'edizione selezionata viene montata direttamente in sola lettura.
+- Conversione temporanea mantenuta solo per install.esd, con indice corretto dopo l'esportazione.
+- Stato della scansione distinto per feature, capabilities e pacchetti.
+- Quattro test PowerShell con comandi Windows simulati verificano WIM, ESD, annullamento e pulizia dopo un errore: 64 test totali.
+
 # 4.0.3 — montaggio immagini e percorsi Windows
 
 - Corretti i percorsi con separatori misti restituiti dal selettore di cartelle, che DISM rifiutava durante Mount-Image con errore 87 (estensione dell'immagine non rilevata).

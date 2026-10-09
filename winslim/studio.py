@@ -44,7 +44,7 @@ from .safety import (
     resolve_components,
 )
 
-VERSION = "WinSlim Studio 4.0.3"
+VERSION = "WinSlim Studio 4.0.4"
 PENDING = {}
 PROTECTED = {
     "RpcSs",
@@ -765,7 +765,7 @@ def remove_caps_fixed(self):
 
 
 """WinSlim Studio: desktop interface and observable, cancellable workflows."""
-VERSION = "WinSlim Studio 4.0.3"
+VERSION = "WinSlim Studio 4.0.4"
 UI_FONT = "Segoe UI" if IS_WIN else "Helvetica"
 MONO_FONT = "Consolas" if IS_WIN else "Courier"
 SCRIPT_FONT = "Segoe Script" if IS_WIN else "URW Chancery L"
@@ -1939,7 +1939,7 @@ class App(ProjectActions):
         f = self.card(
             parent,
             "Catalogo componenti dell’immagine",
-            "La prima scansione può durare alcuni minuti. Il risultato viene riutilizzato finché la ISO non cambia.",
+            "Le immagini WIM vengono lette direttamente; quelle ESD richiedono una conversione. Il catalogo viene riutilizzato nella stessa sessione per ISO ed edizione invariate.",
         )
         bar = ttk.Frame(f, style="Card.TFrame")
         bar.pack(fill="x")
@@ -2914,7 +2914,7 @@ class App(ProjectActions):
         self.scan_btn.configure(state="disabled")
         self.cancel_btn.configure(state="normal")
         self.note_var.set(
-            "Scansione su copia temporanea. Puoi continuare a configurare le altre opzioni."
+            "Scansione in sola lettura. Puoi continuare a configurare le altre opzioni."
         )
         idx = sel[0][0]
         event = self.cancel_event
@@ -3180,17 +3180,26 @@ try {
  Check-Cancel
  $src=([string]$vol.DriveLetter)+':\sources\install.wim'
  if(!(Test-Path $src)){$src=([string]$vol.DriveLetter)+':\sources\install.esd'}
- Write-Output 'STUDIO:2/5 • Esportazione edizione • può richiedere alcuni minuti'
- Export-WindowsImage -SourceImagePath $src -SourceIndex """
+ if(!(Test-Path $src)){throw 'install.wim o install.esd non trovato nella ISO'}
+ $image=$src
+ $sourceIndex="""
         + str(idx)
-        + r""" -DestinationImagePath """
+        + r"""
+ if($src.EndsWith('.esd',[StringComparison]::OrdinalIgnoreCase)) {
+  Write-Output 'STUDIO:2/5 • Conversione ESD • può richiedere alcuni minuti'
+  Export-WindowsImage -SourceImagePath $src -SourceIndex $sourceIndex -DestinationImagePath """
         + psq(wim)
         + r""" -CompressionType Fast | Out-Null
- Check-Cancel
- Write-Output 'STUDIO:3/5 • Montaggio della copia in sola lettura'
- Mount-WindowsImage -ImagePath """
+  $image="""
         + psq(wim)
-        + r""" -Index 1 -Path """
+        + r"""
+  $sourceIndex=1
+ } else {
+  Write-Output 'STUDIO:2/5 • WIM disponibile • esportazione non necessaria'
+ }
+ Check-Cancel
+ Write-Output 'STUDIO:3/5 • Montaggio immagine in sola lettura'
+ Mount-WindowsImage -ImagePath $image -Index $sourceIndex -Path """
         + psq(mnt)
         + r""" -ReadOnly | Out-Null
  $mounted=$true
@@ -3198,17 +3207,19 @@ try {
  $p="""
         + psq(mnt)
         + r"""
- Write-Output 'STUDIO:4/5 • Lettura di feature, capabilities e pacchetti'
+ Write-Output 'STUDIO:4/5 • Lettura delle feature'
  $features=@(Get-WindowsOptionalFeature -Path $p | ForEach-Object {@{Name=$_.FeatureName;State=[string]$_.State}})
  Check-Cancel
+ Write-Output 'STUDIO:4/5 • Lettura delle capabilities'
  $capabilities=@(Get-WindowsCapability -Path $p | ForEach-Object {@{Name=$_.Name;State=[string]$_.State}})
  Check-Cancel
+ Write-Output 'STUDIO:4/5 • Lettura dei pacchetti'
  $packages=@(Get-WindowsPackage -Path $p | ForEach-Object {@{Name=$_.PackageName;State=[string]$_.PackageState}})
  @{features=$features;capabilities=$capabilities;packages=$packages} | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 """
         + psq(out)
         + r"""
 } finally {
- Write-Output 'STUDIO:5/5 • Smontaggio e pulizia della copia temporanea'
+ Write-Output 'STUDIO:5/5 • Smontaggio e pulizia'
  $cleanupErrors=@()
  if($mounted){try {Dismount-WindowsImage -Path """
         + psq(mnt)

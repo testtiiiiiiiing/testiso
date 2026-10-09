@@ -59,6 +59,11 @@ e dell'uscita, diagnostica Windows e validazione più rigorosa delle configurazi
 La nuova ISO sostituisce l'uscita solo dopo che `oscdimg` e il calcolo SHA-256
 sono terminati. Un errore o annullamento precedente conserva l'uscita esistente.
 Le edizioni importate da un JSON devono essere rilette dalla ISO reale.
+La scansione dei componenti monta direttamente `install.wim` in sola lettura,
+senza esportare l'edizione. Per `install.esd` converte soltanto l'edizione
+selezionata in una WIM temporanea. Il catalogo viene riutilizzato nella stessa
+sessione se ISO ed edizione non cambiano; lo stato distingue feature,
+capabilities e pacchetti durante la lettura.
 I nomi dei componenti importati vengono verificati per ogni edizione. I nomi
 abbreviati o con una vecchia versione vengono risolti solo quando il catalogo
 fornisce una corrispondenza univoca, mantenendo la lingua. I nomi sconosciuti o
@@ -80,10 +85,13 @@ senza bloccare la creazione della ISO.
 
 ## Test eseguiti e limiti
 
-Sono passati **60 test** con Python 3.12 e 3.13 su Linux, con display virtuale
+Sono passati **64 test** con Python 3.12 e 3.13 su Linux, con display virtuale
 reale per Tk. Coprono le otto pagine, importazione, profili, annullamento,
 protezione dei percorsi, registro, XML, output atomico, hash, dipendenze dei
 driver e un flusso completo multi-edizione con risposte Windows simulate.
+Quattro test eseguono lo script di scansione in PowerShell 7 con comandi
+Windows simulati: WIM senza esportazione, ESD, annullamento e pulizia dopo
+un errore. Richiedono `pwsh` o `powershell.exe` (oppure `WINSLIM_PWSH`).
 
 **L'EXE e la creazione/avvio/installazione di ISO reali non sono stati eseguiti
 su Windows.** Il pacchetto è una versione di anteprima, non una release
