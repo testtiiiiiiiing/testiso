@@ -52,7 +52,7 @@ def read_archive(data):
 
 def bundle_source(launch=True):
     sources = {}
-    for name in ("__init__", "base", "safety", "studio", "__main__"):
+    for name in ("__init__", "base", "safety", "catalog", "studio", "__main__"):
         sources[name] = (PROJECT / "winslim" / (name + ".py")).read_text(encoding="utf-8")
     loader = """import sys, types, os
 _sources = SOURCES
@@ -61,7 +61,7 @@ _package.__package__ = 'winslim'
 _package.__path__ = []
 sys.modules['winslim'] = _package
 exec(compile(_sources['__init__'], 'winslim/__init__.py', 'exec'), _package.__dict__)
-for _name in ('base', 'safety', 'studio', '__main__'):
+for _name in ('base', 'safety', 'catalog', 'studio', '__main__'):
     _fullname = 'winslim.' + _name
     _module = types.ModuleType(_fullname)
     _module.__package__ = 'winslim'
@@ -144,7 +144,7 @@ def build(original, output):
     read_archive(rebuilt)  # Validate every compressed entry and archive boundary.
     output.write_bytes(rebuilt)
     manifest = {
-        "version": "4.0.6",
+        "version": "4.0.7",
         "original_sha256": hashlib.sha256(uploaded).hexdigest(),
         "output_sha256": hashlib.sha256(rebuilt).hexdigest(),
         "runtime_origin": "Windows Python/Tcl runtime and bootloader from the user-uploaded EXE",

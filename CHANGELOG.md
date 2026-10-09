@@ -1,3 +1,12 @@
+# 4.0.7 — riutilizzo catalogo e gruppi di stato in cima
+
+- Catalogo salvato su disco e riutilizzato anche dopo la chiusura del programma, per la stessa identità e metadati ISO ed edizione.
+- Riscansiona forza una lettura completa; cache non valida o non scrivibile non blocca la scansione.
+- Scansioni interrotte o con ISO cambiata non vengono salvate nella cache.
+- Montaggio in sola lettura con ottimizzazione Windows; nessuna esportazione aggiunta per WIM.
+- Clic sul titolo Stato ISO porta in cima a turno Enabled, Installed, Disabled, Staged e gli altri gruppi, mantenendo tutte le righe e tornando all'inizio della tabella.
+- Sei test aggiuntivi: 79 test totali, inclusi riavvio della cache, invalidazione, forzatura e gruppi di stato in cima.
+
 # 4.0.6 — scelte direttamente nel catalogo componenti
 
 - Eliminati i tre elenchi testuali sotto il catalogo: le scelte appaiono sulla riga selezionata.

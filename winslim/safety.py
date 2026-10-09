@@ -382,6 +382,7 @@ def apply_config(app, cfg):
     app.scan_records = []
     app.search_components.set("")
     app.component_kind.set("Tutti")
+    app.component_priority = ""
     app.component_state.set("Tutti gli stati")
     app.filter_components()
     app.refresh_summary()

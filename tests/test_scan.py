@@ -65,8 +65,8 @@ function Export-WindowsImage {
  $global:calls.Add(@{name='export';index=$SourceIndex;image=$SourceImagePath;destination=$DestinationImagePath})
 }
 function Mount-WindowsImage {
- param($ImagePath,$Index,$Path,[switch]$ReadOnly)
- $global:calls.Add(@{name='mount';image=$ImagePath;index=$Index;readonly=[bool]$ReadOnly;path=$Path})
+ param($ImagePath,$Index,$Path,[switch]$ReadOnly,[switch]$Optimize)
+ $global:calls.Add(@{name='mount';image=$ImagePath;index=$Index;readonly=[bool]$ReadOnly;optimize=[bool]$Optimize;path=$Path})
 }
 function Get-WindowsOptionalFeature {
  param($Path)
@@ -129,6 +129,7 @@ try { & """
         self.assertEqual(mount["image"], r"X:\sources\install.wim")
         self.assertEqual(mount["index"], 5)
         self.assertTrue(mount["readonly"])
+        self.assertTrue(mount["optimize"])
         self.assertTrue(data["calls"][2]["discard"])
         self.assertEqual(data["inventory"]["features"][0]["Name"], "Feature")
 

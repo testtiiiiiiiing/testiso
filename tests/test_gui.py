@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from winslim.studio import App, check_config
 from winslim.safety import apply_config, fingerprint
+from winslim.catalog import CatalogCache, scan_identity
 
 
 class DesktopTests(unittest.TestCase):
@@ -203,6 +204,59 @@ class DesktopTests(unittest.TestCase):
             self.assertEqual(self.app.scan_tree.set(children[0], "state"), state)
         self.app.component_state.set("Tutti gli stati")
         self.assertEqual(len(self.app.scan_tree.get_children()), 4)
+
+    def test_state_heading_promotes_each_group_without_hiding_rows_and_scrolls_to_top(self):
+        self.app.scan_records = [
+            (kind, name + str(i), state)
+            for i in range(8)
+            for kind, name, state in [
+                ("features", "FeatureOn", "Enabled"),
+                ("features", "FeatureOff", "Disabled"),
+                ("packages", "Package", "Staged"),
+                ("capabilities", "Capability", "Installed"),
+            ]
+        ]
+        self.app.filter_components()
+        command = self.app.scan_tree.heading("state", "command")
+        for state in ("Enabled", "Installed", "Disabled", "Staged", ""):
+            self.app.scan_tree.yview_moveto(1)
+            self.app.tk.call(command)
+            self.assertEqual(self.app.component_priority, state)
+            self.assertEqual(self.app.component_state.get(), "Tutti gli stati")
+            items = self.app.scan_tree.get_children()
+            self.assertEqual(len(items), 32)
+            if state:
+                self.assertTrue(
+                    all(self.app.scan_tree.set(item, "state") == state for item in items[:8])
+                )
+            self.assertEqual(self.app.scan_tree.yview()[0], 0)
+
+    def test_disk_catalog_load_does_not_launch_scan_and_rescan_bypasses_cache(self):
+        with tempfile.TemporaryDirectory() as temp:
+            iso = Path(temp) / "source.iso"
+            iso.write_bytes(b"source")
+            self.app.v_iso.set(str(iso))
+            self.app.editions = [(1, "Windows 11 Pro")]
+            self.app.lbed.insert("end", "Windows 11 Pro")
+            self.app.lbed.selection_set(0)
+            self.app.last_editions_iso = str(iso)
+            self.app.editions_fingerprint = fingerprint(iso)
+            cache = CatalogCache(Path(temp) / "catalog")
+            cache.save(scan_identity(iso, 1), [("features", "FeatureA", "Enabled")])
+            self.app.scan_cache.clear()
+            with (
+                patch.object(self.app, "catalog_cache", cache),
+                patch("winslim.studio.IS_WIN", True),
+                patch("winslim.studio.is_admin", return_value=True),
+                patch("winslim.studio.threading.Thread") as thread,
+            ):
+                self.app.scan_iso()
+                thread.assert_not_called()
+                self.assertEqual(self.app.scan_records, [("features", "FeatureA", "Enabled")])
+                self.app.scan_iso(force=True)
+                thread.assert_called_once()
+                self.assertEqual(self.app.operation, "scan")
+                self.app.finish_operation()
 
     def test_catalog_d_and_r_keys_update_selected_rows_in_place(self):
         self.app.navigate("apps")

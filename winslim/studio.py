@@ -43,8 +43,9 @@ from .safety import (
     component_records,
     resolve_components,
 )
+from .catalog import CatalogCache, scan_identity
 
-VERSION = "WinSlim Studio 4.0.6"
+VERSION = "WinSlim Studio 4.0.7"
 PENDING = {}
 PROTECTED = {
     "RpcSs",
@@ -795,7 +796,7 @@ def remove_caps_fixed(self):
 
 
 """WinSlim Studio: desktop interface and observable, cancellable workflows."""
-VERSION = "WinSlim Studio 4.0.6"
+VERSION = "WinSlim Studio 4.0.7"
 UI_FONT = "Segoe UI" if IS_WIN else "Helvetica"
 MONO_FONT = "Consolas" if IS_WIN else "Courier"
 SCRIPT_FONT = "Segoe Script" if IS_WIN else "URW Chancery L"
@@ -1263,6 +1264,11 @@ class App(ProjectActions):
         self.cancel_event = threading.Event()
         self.pending_close = False
         self.scan_cache = {}
+        self.catalog_cache = CatalogCache(
+            os.path.join(
+                os.environ.get("LOCALAPPDATA", tempfile.gettempdir()), "WinSlim", "Cache", "Catalog"
+            )
+        )
         self.scan_records = []
         self.logs = []
         self.operation_started = None
@@ -1692,6 +1698,9 @@ class App(ProjectActions):
         t.sort_descending = descending
         for key, label in t.sort_labels.items():
             t.heading(key, text=label + (" ▼" if descending else " ▲") if key == column else label)
+        if t is getattr(self, "scan_tree", None):
+            self.prioritize_component_state()
+            self.update_state_heading()
 
     def pathrow(self, parent, label, var, fn, hint=""):
         self.label(parent, label, "Heading.TLabel").pack(anchor="w", pady=(10, 4))
@@ -1717,6 +1726,7 @@ class App(ProjectActions):
         self.search_components = tk.StringVar()
         self.component_kind = tk.StringVar(value="Tutti")
         self.component_state = tk.StringVar(value="Tutti gli stati")
+        self.component_priority = ""
         self.scan_state_var = tk.StringVar(value="Nessuna scansione eseguita")
         self.status_var = tk.StringVar(value="Pronto")
         self.phase_var = tk.StringVar(value="In attesa")
@@ -1971,7 +1981,7 @@ class App(ProjectActions):
         f = self.card(
             parent,
             "Catalogo componenti dell’immagine",
-            "Le immagini WIM vengono lette direttamente; quelle ESD richiedono una conversione. Il catalogo viene riutilizzato nella stessa sessione per ISO ed edizione invariate.",
+            "Le immagini WIM vengono lette direttamente; quelle ESD richiedono una conversione. Il catalogo viene salvato e riutilizzato anche alla riapertura per ISO ed edizione invariate. Riscansiona forza una nuova lettura.",
         )
         bar = ttk.Frame(f, style="Card.TFrame")
         bar.pack(fill="x")
@@ -1979,6 +1989,10 @@ class App(ProjectActions):
             bar, "Scansiona componenti", lambda: self.action(self.scan_iso), True
         )
         self.scan_btn.pack(side="left")
+        self.rescan_btn = self.button(
+            bar, "Riscansiona", lambda: self.action(lambda: self.scan_iso(force=True))
+        )
+        self.rescan_btn.pack(side="left", padx=(8, 0))
         self.button(
             bar, "Disattiva / rimuovi [D]", lambda: self.action(self.set_component_choice)
         ).pack(side="left", padx=8)
@@ -2033,6 +2047,13 @@ class App(ProjectActions):
             12,
         )
         self.scan_tree.tag_configure("pending", foreground=COLORS["accent"])
+        self.scan_tree.heading("state", command=self.cycle_component_state)
+        self.label(
+            f,
+            "Clicca Stato ISO per portare in cima Enabled, Installed e gli altri gruppi, mantenendo tutte le righe.",
+            "Muted.TLabel",
+            wraplength=850,
+        ).pack(anchor="w", pady=(8, 0))
         for key in ("d", "D"):
             self.scan_tree.bind("<KeyPress-" + key + ">", lambda e: self.component_shortcut(True))
         for key in ("r", "R"):
@@ -2768,6 +2789,7 @@ class App(ProjectActions):
         self.btn.configure(state="normal")
         self.create_btn.configure(state="normal")
         self.scan_btn.configure(state="normal")
+        self.rescan_btn.configure(state="normal")
         if self.pending_close:
             self.after(100, self._close)
 
@@ -2935,6 +2957,46 @@ class App(ProjectActions):
             self.timer_var.set("%02d:%02d" % (seconds // 60, seconds % 60))
         self.after(100, self._pump)
 
+    def prioritize_component_state(self):
+        if self.component_priority:
+            items = sorted(
+                self.scan_tree.get_children(),
+                key=lambda item: self.scan_tree.set(item, "state") != self.component_priority,
+            )
+            for position, item in enumerate(items):
+                self.scan_tree.move(item, "", position)
+
+    def update_state_heading(self):
+        label = "STATO ISO" + (" · " + self.component_priority if self.component_priority else "")
+        self.scan_tree.heading("state", text=label)
+
+    def cycle_component_state(self):
+        kind_filter = self.component_kind.get()
+        available = {
+            state
+            for kind, _, state in self.scan_records
+            if kind_filter == "Tutti" or kind == kind_filter
+        }
+        scanned = {(kind, name) for kind, name, _ in self.scan_records}
+        if any(
+            (kind, name) not in scanned
+            for kind, names in self.component_choices.items()
+            if kind_filter == "Tutti" or kind == kind_filter
+            for name in names
+        ):
+            available.add("Da verificare")
+        preferred = [
+            state for state in ("Enabled", "Installed", "Disabled", "Staged") if state in available
+        ]
+        states = preferred + sorted(available.difference(preferred), key=str.casefold) + [""]
+        current = self.component_priority
+        self.component_priority = (
+            states[(states.index(current) + 1) % len(states)] if current in states else states[0]
+        )
+        self.component_state.set("Tutti gli stati")
+        self.filter_components()
+        self.scan_tree.yview_moveto(0)
+
     def filter_components(self):
         if not hasattr(self, "scan_tree"):
             return
@@ -2975,12 +3037,14 @@ class App(ProjectActions):
                 )
         if self.scan_tree.sort_column:
             self.sort_tree(self.scan_tree, self.scan_tree.sort_column, repeat=True)
+        self.prioritize_component_state()
         self.scan_tree.selection_set([item for item in selected if self.scan_tree.exists(item)])
         if self.scan_tree.exists(focus):
             self.scan_tree.focus(focus)
         self.scan_tree.yview_moveto(top)
+        self.update_state_heading()
 
-    def scan_iso(self):
+    def scan_iso(self, force=False):
         if self.operation or self.loading_editions:
             raise ValueError("È già in corso un’operazione.")
         iso = self.v_iso.get()
@@ -2991,12 +3055,18 @@ class App(ProjectActions):
             raise ValueError("Leggi le edizioni e selezionane una.")
         if self.last_editions_iso != iso or self.editions_fingerprint != fingerprint(iso):
             raise ValueError("Rileggi le edizioni della ISO corrente.")
-        stat = os.stat(iso)
-        key = (os.path.abspath(iso), stat.st_size, stat.st_mtime_ns, sel[0][0])
-        if key in self.scan_cache:
-            self.scan_records = self.scan_cache[key]
+        key = scan_identity(iso, sel[0][0])
+        cached = None if force else self.scan_cache.get(key)
+        if cached is None and not force:
+            cached = self.catalog_cache.load(key)
+        if cached is not None:
+            self.scan_cache[key] = cached
+            self.scan_records = cached
             self.filter_components()
-            self.scan_state_var.set("Catalogo riutilizzato dalla scansione precedente.")
+            self.scan_state_var.set(
+                "%d componenti • catalogo riutilizzato, nessuna scansione necessaria." % len(cached)
+            )
+            self.status_var.set("Catalogo caricato")
             return
         self.prog["value"] = 0
         self.stage_var.set("Scansione catalogo • 5 fasi")
@@ -3006,6 +3076,7 @@ class App(ProjectActions):
         self.operation_started = time.monotonic()
         self.scan_progress.start(12)
         self.scan_btn.configure(state="disabled")
+        self.rescan_btn.configure(state="disabled")
         self.cancel_btn.configure(state="normal")
         self.note_var.set(
             "Scansione in sola lettura. Puoi continuare a configurare le altre opzioni."
@@ -3077,6 +3148,12 @@ class App(ProjectActions):
                 for kind, items in data.items():
                     for item in items or []:
                         rows.append((kind, item.get("Name", ""), item.get("State", "")))
+                if scan_identity(iso, idx) != key:
+                    raise ValueError("La ISO è cambiata durante la scansione: rileggi le edizioni.")
+                if not self.catalog_cache.save(key, rows):
+                    self.log(
+                        "Catalogo letto; cache su disco non disponibile, riutilizzo limitato alla sessione."
+                    )
                 self.q.put(("scan_ready", (key, iso, rows)))
                 shutil.rmtree(temp, ignore_errors=True)
             except Exception as e:
@@ -3295,7 +3372,7 @@ try {
  Write-Output 'STUDIO:3/5 • Montaggio immagine in sola lettura'
  Mount-WindowsImage -ImagePath $image -Index $sourceIndex -Path """
         + psq(mnt)
-        + r""" -ReadOnly | Out-Null
+        + r""" -ReadOnly -Optimize | Out-Null
  $mounted=$true
  Check-Cancel
  $p="""

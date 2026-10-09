@@ -66,13 +66,18 @@ Le edizioni importate da un JSON devono essere rilette dalla ISO reale.
 La scansione dei componenti monta direttamente `install.wim` in sola lettura,
 senza esportare l'edizione. Per `install.esd` converte soltanto l'edizione
 selezionata in una WIM temporanea. Il catalogo viene riutilizzato nella stessa
-sessione se ISO ed edizione non cambiano; lo stato distingue feature,
+sessione e alla riapertura se identità, dimensione e date del file ISO ed edizione non cambiano. **Riscansiona** forza una lettura nuova. Lo stato distingue feature,
 capabilities e pacchetti durante la lettura.
-Nel catalogo puoi filtrare per nome, tipo e ogni stato presente (Enabled,
+Cliccando **Stato ISO** porti in cima a turno Enabled, Installed, Disabled,
+Staged e gli altri gruppi presenti, mantenendo tutte le righe e tornando
+all’inizio della tabella. Nel catalogo puoi filtrare per nome, tipo e ogni stato presente (Enabled,
 Disabled, Staged ecc.). Seleziona una o più righe e premi **D** per richiedere
 la disattivazione delle feature con rimozione dei file o la rimozione di
 capabilities/pacchetti; **R** annulla la richiesta. La colonna **Scelta** cambia
 subito nella stessa tabella, mentre **Stato ISO** conserva lo stato rilevato.
+La cache del catalogo è in `%LOCALAPPDATA%\WinSlim\Cache\Catalog`; una cache
+assente o danneggiata viene ignorata. Il montaggio di scansione usa
+l’ottimizzazione Windows; il tempo totale della prima lettura dipende da DISM.
 Le modifiche vengono applicate durante la creazione. Le tre liste testuali
 separate sono state eliminate; i JSON precedenti restano compatibili e le
 richieste non ancora riscontrate appaiono nel catalogo come “Da verificare”.
@@ -97,7 +102,7 @@ senza bloccare la creazione della ISO.
 
 ## Test eseguiti e limiti
 
-Sono passati **73 test** con Python 3.12 e 3.13 su Linux, con display virtuale
+Sono passati **79 test** con Python 3.12 e 3.13 su Linux, con display virtuale
 reale per Tk. Coprono le otto pagine, importazione, profili, annullamento,
 protezione dei percorsi, registro, XML, output atomico, hash, dipendenze dei
 driver e un flusso completo multi-edizione con risposte Windows simulate.
